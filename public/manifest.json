@@ -1,0 +1,9 @@
+{
+  "name": "GuruFinance",
+  "short_name": "GuruFinance",
+  "description": "Smart Loan & Interest Management",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#1a1a2e"
+}

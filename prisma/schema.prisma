@@ -1,0 +1,449 @@
+// ============================================================
+// LOANBOOK - Prisma Schema
+// Production-ready schema for Loan & Interest Management System
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum Role {
+  ADMIN
+  MANAGER
+  VIEWER
+}
+
+enum LoanStatus {
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+enum InterestType {
+  SIMPLE
+  COMPOUND
+}
+
+enum LoanFrequency {
+  MONTHLY
+  DAILY
+}
+
+enum CompoundingRule {
+  MONTHLY          // Always compounds monthly
+  AFTER_1_MISSED   // Compounds after 1 missed payment
+  AFTER_2_MISSED   // Compounds after 2 missed payments
+  CUSTOM           // Custom rules defined in loan notes
+}
+
+enum DueStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+  WAIVED
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CHEQUE
+}
+
+enum TransactionType {
+  PRINCIPAL_DISBURSEMENT
+  PRINCIPAL_REPAYMENT
+  LOAN_TOPUP
+  INTEREST_PAYMENT
+  PENALTY_PAYMENT
+  WAIVER
+}
+
+enum MessageType {
+  DUE_REMINDER
+  BALANCE_REMINDER
+  PAYMENT_RECEIPT
+  ACCOUNT_STATEMENT
+  CUSTOM
+}
+
+enum AuditAction {
+  BORROWER_CREATED
+  BORROWER_UPDATED
+  BORROWER_ARCHIVED
+  BORROWER_RESTORED
+  LOAN_CREATED
+  LOAN_UPDATED
+  LOAN_CLOSED
+  LOAN_ARCHIVED
+  LOAN_TOPUP
+  PAYMENT_RECORDED
+  PAYMENT_UPDATED
+  PAYMENT_DELETED
+  PRINCIPAL_REPAID
+  DUE_GENERATED
+  DUE_WAIVED
+  MESSAGE_SENT
+  SETTINGS_UPDATED
+  USER_LOGIN
+  USER_LOGOUT
+  PASSWORD_CHANGED
+}
+
+// ============================================================
+// USER (Lender / Admin)
+// ============================================================
+
+model User {
+  id                String    @id @default(cuid())
+  name              String
+  mobile            String    @unique
+  passwordHash      String
+  role              Role      @default(ADMIN)
+  isActive          Boolean   @default(true)
+
+  // Password reset
+  resetToken        String?
+  resetTokenExpiry  DateTime?
+
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastLoginAt       DateTime?
+
+  // Relations
+  borrowers         Borrower[]
+  auditLogs         AuditLog[]
+  sessions          Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ============================================================
+// BORROWER
+// ============================================================
+
+model Borrower {
+  id              String    @id @default(cuid())
+  userId          String    // Owner (lender)
+
+  // Personal Info
+  fullName        String
+  mobile          String
+  alternateMobile String?
+  address         String?
+  notes           String?
+  photoUrl        String?
+
+  // Status
+  isArchived      Boolean   @default(false)
+  archivedAt      DateTime?
+  archivedReason  String?
+
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  user            User      @relation(fields: [userId], references: [id])
+  loans           Loan[]
+  messages        MessageLog[]
+
+  @@index([userId])
+  @@index([mobile])
+  @@map("borrowers")
+}
+
+// ============================================================
+// LOAN
+// ============================================================
+
+model Loan {
+  id              String          @id @default(cuid())
+  loanNumber      String          @unique // Human-readable: LN-2024-001
+  borrowerId      String
+
+  // Financial Terms
+  principalAmount Decimal         @db.Decimal(15, 2)
+  currentPrincipal Decimal        @db.Decimal(15, 2) // Changes on repayment/top-up
+  interestRate    Decimal         @db.Decimal(8, 4)  // e.g., 3.0000 = 3%
+  interestType    InterestType    @default(SIMPLE)
+  loanFrequency   LoanFrequency   @default(MONTHLY)
+
+  // Compounding (only relevant if interestType = COMPOUND)
+  compoundingRule CompoundingRule?
+
+  // Dates
+  startDate       DateTime
+  dueDay          Int             // Day of month dues are generated (1-31)
+  closedAt        DateTime?
+
+  // Status
+  status          LoanStatus      @default(ACTIVE)
+
+  // Additional
+  notes           String?
+  collateral      String?         // Description of collateral taken
+  guarantorName   String?
+  guarantorMobile String?
+
+  // Timestamps
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  borrower        Borrower        @relation(fields: [borrowerId], references: [id])
+  interestDues    InterestDue[]
+  payments        Payment[]
+  transactions    LoanTransaction[]
+  cheques         Cheque[]
+  documents       LoanDocument[]
+  messages        MessageLog[]
+
+  @@index([borrowerId])
+  @@index([status])
+  @@map("loans")
+}
+
+// ============================================================
+// INTEREST DUE
+// Each row = one interest period (one month or one day)
+// ============================================================
+
+model InterestDue {
+  id              String      @id @default(cuid())
+  loanId          String
+
+  // Period
+  dueDate         DateTime
+  periodStart     DateTime
+  periodEnd       DateTime
+
+  // Amounts
+  principalAtTime Decimal     @db.Decimal(15, 2) // Principal when due was generated
+  interestRate    Decimal     @db.Decimal(8, 4)
+  dueAmount       Decimal     @db.Decimal(15, 2)
+  paidAmount      Decimal     @db.Decimal(15, 2) @default(0)
+  waivedAmount    Decimal     @db.Decimal(15, 2) @default(0)
+  penaltyAmount   Decimal     @db.Decimal(15, 2) @default(0)
+
+  // Status
+  status          DueStatus   @default(PENDING)
+  daysOverdue     Int         @default(0) // Updated by cron
+
+  // Compounding flag
+  wasCompounded   Boolean     @default(false)
+  compoundedAt    DateTime?
+
+  // Timestamps
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  loan            Loan        @relation(fields: [loanId], references: [id])
+  paymentAllocations PaymentAllocation[]
+
+  @@index([loanId])
+  @@index([dueDate])
+  @@index([status])
+  @@unique([loanId, dueDate])
+  @@map("interest_dues")
+}
+
+// ============================================================
+// PAYMENT
+// ============================================================
+
+model Payment {
+  id              String          @id @default(cuid())
+  loanId          String
+
+  amount          Decimal         @db.Decimal(15, 2)
+  paymentDate     DateTime
+  paymentMethod   PaymentMethod   @default(CASH)
+  notes           String?
+
+  // Cheque details (if method = CHEQUE)
+  chequeId        String?
+
+  // Receipt
+  receiptNumber   String?         @unique
+  receiptUrl      String?         // PDF receipt stored
+
+  // Timestamps
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  loan            Loan            @relation(fields: [loanId], references: [id])
+  cheque          Cheque?         @relation(fields: [chequeId], references: [id])
+  allocations     PaymentAllocation[]
+
+  @@index([loanId])
+  @@index([paymentDate])
+  @@map("payments")
+}
+
+// ============================================================
+// PAYMENT ALLOCATION
+// Maps payment amount to specific dues (supports partial payments)
+// ============================================================
+
+model PaymentAllocation {
+  id            String      @id @default(cuid())
+  paymentId     String
+  dueId         String
+  allocatedAmount Decimal   @db.Decimal(15, 2)
+  createdAt     DateTime    @default(now())
+
+  payment       Payment     @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  due           InterestDue @relation(fields: [dueId], references: [id])
+
+  @@unique([paymentId, dueId])
+  @@map("payment_allocations")
+}
+
+// ============================================================
+// LOAN TRANSACTION
+// Immutable ledger of all principal movements
+// ============================================================
+
+model LoanTransaction {
+  id              String          @id @default(cuid())
+  loanId          String
+
+  type            TransactionType
+  amount          Decimal         @db.Decimal(15, 2)
+  principalBefore Decimal         @db.Decimal(15, 2)
+  principalAfter  Decimal         @db.Decimal(15, 2)
+  notes           String?
+  transactionDate DateTime
+
+  createdAt       DateTime        @default(now())
+
+  loan            Loan            @relation(fields: [loanId], references: [id])
+
+  @@index([loanId])
+  @@map("loan_transactions")
+}
+
+// ============================================================
+// CHEQUE
+// ============================================================
+
+model Cheque {
+  id              String    @id @default(cuid())
+  loanId          String
+  chequeNumber    String
+  bankName        String
+  amount          Decimal   @db.Decimal(15, 2)
+  chequeDate      DateTime  // Date on the cheque
+  depositDate     DateTime? // When deposited
+  isBounced       Boolean   @default(false)
+  bouncedAt       DateTime?
+  bounceReason    String?
+  notes           String?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  loan            Loan      @relation(fields: [loanId], references: [id])
+  payments        Payment[]
+
+  @@index([chequeNumber])
+  @@map("cheques")
+}
+
+// ============================================================
+// LOAN DOCUMENT
+// ============================================================
+
+model LoanDocument {
+  id          String    @id @default(cuid())
+  loanId      String
+  name        String
+  fileUrl     String
+  fileType    String
+  uploadedAt  DateTime  @default(now())
+
+  loan        Loan      @relation(fields: [loanId], references: [id])
+
+  @@map("loan_documents")
+}
+
+// ============================================================
+// WHATSAPP MESSAGE LOG
+// ============================================================
+
+model MessageLog {
+  id          String      @id @default(cuid())
+  borrowerId  String
+  loanId      String?
+  messageType MessageType
+  content     String      @db.Text
+  sentAt      DateTime    @default(now())
+  wasDelivered Boolean    @default(false)
+
+  borrower    Borrower    @relation(fields: [borrowerId], references: [id])
+  loan        Loan?       @relation(fields: [loanId], references: [id])
+
+  @@index([borrowerId])
+  @@map("message_logs")
+}
+
+// ============================================================
+// SETTINGS
+// ============================================================
+
+model Settings {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  value       String    @db.Text
+  updatedAt   DateTime  @updatedAt
+
+  @@map("settings")
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  userId      String?
+  action      AuditAction
+  entityType  String      // "Borrower", "Loan", "Payment", etc.
+  entityId    String?
+  details     Json?       // Snapshot of changes
+  ipAddress   String?
+  createdAt   DateTime    @default(now())
+
+  user        User?       @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
