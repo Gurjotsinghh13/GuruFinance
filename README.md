@@ -1,334 +1,356 @@
-# GuruFinance — Smart Loan & Interest Management
+# GuruFinance
 
-A production-ready, mobile-first web application to replace the paper diary for private lenders. Tracks borrowers, loans, interest dues, payments, and generates reports automatically.
+Smart Loan & Interest Management
 
----
+GuruFinance is a mobile-first private lending management app. It tracks borrowers, loans, interest dues, collections, partial payments, principal repayments, loan top-ups, overdue accounts, reports, and audit history.
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | Next.js 15 App Router + TypeScript |
-| Styling | Tailwind CSS (no UI library dependency) |
-| Database | PostgreSQL (Neon recommended) |
+| Frontend | Next.js 16 App Router + TypeScript |
+| Styling | Tailwind CSS |
+| Database | PostgreSQL |
 | ORM | Prisma |
-| Auth | JWT cookies (bcryptjs) |
+| Auth | JWT cookies + bcryptjs |
 | Deployment | Vercel |
 | Scheduling | Vercel Cron Jobs |
 
----
+## Core Features
 
-## Features
+- Borrower management with create, edit, archive, and restore workflows.
+- Multiple loans per borrower.
+- Monthly and daily interest dues.
+- Simple and compound interest fields.
+- Interest payment recording with automatic allocation.
+- Partial and multiple partial payment support.
+- Principal repayment with future due recalculation.
+- Loan top-up with future due recalculation.
+- Loan closure with future due cleanup.
+- Overdue detection through scheduled cron.
+- Dashboard for active principal, received cash, pending interest, overdue interest, and collections.
+- Collections page for today, upcoming, and overdue dues.
+- Borrower ledger and account statement.
+- Reports for monthly due/collection summaries.
+- Audit log for important account and financial actions.
+- WhatsApp deep-link reminders.
 
-- **Today's Collection** — Default home screen showing all dues for today with one-tap payment
-- **Borrower Management** — Full CRUD, archive/restore, multiple loans per borrower
-- **Loan Management** — Simple & compound interest, monthly & daily frequency, collateral tracking
-- **Auto Due Generation** — Cron job generates 3 months of dues rolling, every midnight
-- **Payment Engine** — Allocates payments to oldest dues first, supports partial payments
-- **Principal Repayment** — Reduces principal, regenerates future dues automatically
-- **Loan Top-Up** — Adds to principal with full audit trail
-- **Overdue Tracker** — Auto-marks overdue, shows days overdue
-- **WhatsApp Integration** — One-tap deep links with customizable templates
-- **Reports** — 6-month collection charts, outstanding report
-- **Audit Log** — Every action timestamped and recorded
-- **Settings** — Editable WhatsApp message templates
+## Important Financial Safeguards
 
----
+- Money values use PostgreSQL `Decimal` columns.
+- Payment allocations are stored separately from payments.
+- Principal movements are stored in immutable `LoanTransaction` rows.
+- Future pending dues are regenerated after principal changes.
+- Future partial dues are recalculated while preserving paid amounts and allocation history.
+- Duplicate dues are prevented at database level with a unique constraint on `(loanId, dueDate)`.
+- Dashboard "Received" uses actual `Payment.paymentDate`, not due date.
 
-## Quick Start (Local Development)
+## Local Setup
 
-### Prerequisites
-
-- Node.js 18+
-- A PostgreSQL database (Neon free tier recommended)
-
-### Step 1: Clone and install
+### 1. Install Dependencies
 
 ```bash
-git clone <your-repo>
-cd gurufinance
 npm install
 ```
 
-### Step 2: Set up environment variables
+### 2. Configure Environment
 
-```bash
-cp .env.example .env.local
-```
-
-Edit `.env.local`:
+Create `.env`:
 
 ```env
-DATABASE_URL="postgresql://..."   # Your Neon connection string
-JWT_SECRET="your-secret-here"     # At least 32 random characters
-CRON_SECRET="your-cron-secret"    # Any random string
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DATABASE?sslmode=require"
+JWT_SECRET="use-a-random-secret-at-least-32-characters"
+CRON_SECRET="use-another-random-secret"
 ```
 
-### Step 3: Set up database
+Do not commit `.env`.
+
+### 3. Generate Prisma Client
 
 ```bash
-# Generate Prisma client
 npm run db:generate
+```
 
-# Push schema to database (creates all tables)
-npm run db:push
+### 4. Apply Migrations
 
-# Seed with sample data
+```bash
+npx prisma migrate deploy
+```
+
+For local development only, if you intentionally want to create new migrations:
+
+```bash
+npm run db:migrate
+```
+
+### 5. Optional Seed Data
+
+```bash
 npm run db:seed
 ```
 
-### Step 4: Run development server
+Warning: the seed file contains demo credentials. Do not seed demo credentials into a real production database.
+
+### 6. Run Locally
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+Open:
 
-**Default login:**
-- Mobile: `9999999999`
-- Password: `Admin@123`
+```text
+http://localhost:3000
+```
 
----
+## Scripts
 
-## Deployment to Vercel
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Start local development server |
+| `npm run build` | Build production app |
+| `npm run start` | Start production server |
+| `npm test` | Run financial workflow tests |
+| `npm run db:generate` | Generate Prisma client |
+| `npm run db:migrate` | Create/apply local Prisma migration |
+| `npm run db:migrate:prod` | Apply migrations in production |
+| `npm run db:seed` | Seed demo data |
+| `npm run db:studio` | Open Prisma Studio |
 
-### Step 1: Push to GitHub
+## Deployment To Vercel
+
+### 1. Push To GitHub
 
 ```bash
 git init
 git add .
-git commit -m "Initial commit"
-git remote add origin https://github.com/yourusername/gurufinance.git
+git commit -m "Initial GuruFinance app"
+git branch -M main
+git remote add origin https://github.com/YOUR_USERNAME/gurufinance.git
 git push -u origin main
 ```
 
-### Step 2: Deploy on Vercel
+### 2. Import Project In Vercel
 
-1. Go to [vercel.com](https://vercel.com) → New Project
-2. Import your GitHub repository
-3. Set environment variables:
+1. Open Vercel.
+2. Create a new project.
+3. Import the GitHub repository.
+4. Add environment variables:
 
-| Variable | Value |
-|---|---|
-| `DATABASE_URL` | Your Neon PostgreSQL URL |
-| `JWT_SECRET` | Long random string (32+ chars) |
-| `CRON_SECRET` | Random string |
-| `NEXT_PUBLIC_APP_URL` | Your Vercel URL |
+| Variable | Required | Notes |
+|---|---:|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `JWT_SECRET` | Yes | At least 32 characters |
+| `CRON_SECRET` | Yes | Used by `/api/cron/generate-dues` |
 
-4. Click **Deploy**
+### 3. Deploy
 
-### Step 3: Run migrations on production
-
-After first deploy:
+Use the default Vercel build command:
 
 ```bash
-# Using Vercel CLI
-vercel env pull
+npm run build
+```
+
+### 4. Apply Production Migrations
+
+Run:
+
+```bash
 npx prisma migrate deploy
-
-# Or via Vercel dashboard → Functions → Run command
 ```
-
-### Step 4: Seed production (optional)
-
-```bash
-DATABASE_URL="your-prod-url" npm run db:seed
-```
-
----
-
-## Database Setup (Neon)
-
-1. Go to [neon.tech](https://neon.tech) → Sign up free
-2. Create project → Select "India" region
-3. Copy the connection string from Dashboard
-4. Paste in `DATABASE_URL`
-
----
-
-## Project Structure
-
-```
-gurufinance/
-├── prisma/
-│   ├── schema.prisma          # Complete database schema
-│   └── seed.ts                # Sample data seeder
-├── src/
-│   ├── app/
-│   │   ├── actions/           # Server Actions (auth, borrowers, loans, payments)
-│   │   ├── api/cron/          # Cron job endpoint
-│   │   ├── dashboard/         # Today's collection (home screen)
-│   │   ├── borrowers/         # Borrower list, detail, new
-│   │   ├── loans/             # Loan list, detail, new
-│   │   ├── collections/       # Collections by date range
-│   │   ├── reports/           # Monthly reports
-│   │   ├── settings/          # WhatsApp templates, password
-│   │   └── login/             # Auth pages
-│   ├── components/
-│   │   ├── dashboard/         # Stats, morning briefing, collection list
-│   │   ├── borrowers/         # Borrower header, list
-│   │   ├── loans/             # Loan card, loan detail
-│   │   ├── payments/          # Payment modal
-│   │   ├── collections/       # Collections list
-│   │   ├── reports/           # Report charts
-│   │   ├── settings/          # Settings UI
-│   │   └── shared/            # Sidebar, mobile nav, topbar
-│   ├── features/
-│   │   ├── interest-engine/   # All interest calculations (pure functions)
-│   │   ├── due-engine/        # Due generation and overdue logic
-│   │   ├── payment-engine/    # Payment processing
-│   │   └── whatsapp/          # Template management and link building
-│   ├── lib/
-│   │   ├── prisma.ts          # Prisma client singleton
-│   │   └── auth.ts            # JWT session management
-│   ├── types/
-│   │   └── index.ts           # All TypeScript types
-│   └── utils/
-│       └── index.ts           # Formatters, generators, helpers
-├── .env.example
-├── vercel.json                 # Cron schedule
-├── next.config.ts
-├── tailwind.config.ts
-└── tsconfig.json
-```
-
----
-
-## How Dues Are Generated
-
-1. **On Loan Creation** — Generates 3 months of future dues immediately
-2. **Nightly Cron** (12:00 AM IST) — Generates dues for all active loans up to 3 months ahead
-3. **After Principal Change** — Deletes future PENDING dues and regenerates with new principal
-
-The cron runs at `18:30 UTC` which is `00:00 IST`.
-
----
-
-## Interest Calculation Rules
-
-### Monthly Simple Interest
-```
-Monthly Interest = Principal × Rate / 100
-
-Example: ₹1,00,000 × 3% = ₹3,000/month
-```
-
-### Daily Interest (derived from monthly rate)
-```
-Annual Rate = Monthly Rate × 12
-Daily Rate  = Annual Rate / 365
-Daily Interest = Principal × Daily Rate
-
-Example: ₹1,00,000 × (3% × 12 / 365) = ~₹98.63/day
-```
-
-### Partial Month (prorated)
-```
-First period days × Daily Rate × Principal
-
-Used when: loan start date ≠ due day
-```
-
-### Payment Allocation Order
-1. OVERDUE dues (oldest first)
-2. PARTIAL dues (oldest first)
-3. PENDING dues (oldest first)
-
-Unallocated amount after covering all dues = available for principal repayment (manual action).
-
----
-
-## WhatsApp Integration
-
-No API key needed. Uses `wa.me` deep links which open WhatsApp with pre-filled message.
-
-Templates use `{{variableName}}` syntax and are fully editable from Settings.
-
-Available variables per template type shown in Settings UI.
-
----
 
 ## Cron Job
 
-The nightly cron at `/api/cron/generate-dues`:
-- Generates dues for all active loans (rolling 3-month window)
-- Marks past-due PENDING/PARTIAL records as OVERDUE
-- Updates `daysOverdue` count for all overdue records
-- Secured with `CRON_SECRET` bearer token
+Configured in `vercel.json`:
 
-Vercel Free plan: 2 cron jobs included.
-
----
-
-## Adding Your First Real User
-
-After deploying, to create your actual admin account:
-
-```bash
-# Connect to your database and run:
-INSERT INTO users (id, name, mobile, "passwordHash", role, "isActive", "createdAt", "updatedAt")
-VALUES (
-  gen_random_uuid(),
-  'Your Name',
-  '9876543210',
-  '$2a$12$...',   -- bcrypt hash of your password
-  'ADMIN',
-  true,
-  NOW(),
-  NOW()
-);
+```text
+30 18 * * *
 ```
 
-Or modify the seed file with your actual details before seeding.
+This runs at 18:30 UTC, which is 00:00 IST.
 
----
+Cron endpoint:
+
+```text
+/api/cron/generate-dues
+```
+
+It:
+
+- Generates rolling future dues for active loans.
+- Marks past pending/partial dues as overdue.
+- Updates `daysOverdue`.
+
+The endpoint requires:
+
+```http
+Authorization: Bearer <CRON_SECRET>
+```
+
+## Database Notes
+
+Important tables:
+
+- `users`
+- `borrowers`
+- `loans`
+- `interest_dues`
+- `payments`
+- `payment_allocations`
+- `loan_transactions`
+- `audit_logs`
+
+Important database protection:
+
+```prisma
+@@unique([loanId, dueDate])
+```
+
+on `InterestDue`.
+
+This prevents duplicate due rows for the same loan and date.
+
+## Backup Procedure
+
+Daily backup:
+
+```bash
+mkdir -p backups/daily
+pg_dump "$DATABASE_URL" --format=custom --no-owner --no-acl --file="backups/daily/gurufinance-daily-$(date +%Y-%m-%d).dump"
+```
+
+Windows PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force backups\daily
+$today = Get-Date -Format "yyyy-MM-dd"
+pg_dump $env:DATABASE_URL --format=custom --no-owner --no-acl --file="backups\daily\gurufinance-daily-$today.dump"
+```
+
+Keep:
+
+- 30 daily backups.
+- 12 weekly backups.
+- At least one copy outside the computer/server.
+
+## Restore Procedure
+
+Restore a backup:
+
+```bash
+pg_restore --clean --if-exists --no-owner --no-acl --dbname="$DATABASE_URL" backups/daily/gurufinance-daily-YYYY-MM-DD.dump
+npx prisma migrate deploy
+```
+
+Windows PowerShell:
+
+```powershell
+pg_restore --clean --if-exists --no-owner --no-acl --dbname=$env:DATABASE_URL backups\daily\gurufinance-daily-YYYY-MM-DD.dump
+npx.cmd prisma migrate deploy
+```
+
+After restore, verify:
+
+- Login works.
+- Borrowers load.
+- Loans load.
+- Payments and allocations are visible.
+- Dashboard totals look correct.
+- Collections and reports load.
+
+## Production Checklist
+
+Before real usage:
+
+- Set strong production `DATABASE_URL`, `JWT_SECRET`, and `CRON_SECRET`.
+- Confirm `.env` is not committed.
+- Apply migrations with `npx prisma migrate deploy`.
+- Do not seed demo credentials into production.
+- Create a real admin user.
+- Run `npm test`.
+- Run `npm run build`.
+- Verify cron endpoint works with `CRON_SECRET`.
+- Configure database backups.
+- Perform a restore test on a staging database.
+- Manually test borrower, loan, payment, principal repayment, top-up, closure, dashboard, collections, and reports.
 
 ## Security Notes
 
-- Passwords hashed with bcrypt (cost factor 12)
-- Sessions use signed JWT stored in httpOnly cookies
-- All routes protected by middleware
-- All data scoped to authenticated user (`userId` on every query)
-- Cron endpoint protected by bearer token
-- No sensitive data in URL params or localStorage
+- Passwords are hashed with bcrypt.
+- Sessions use signed JWT cookies.
+- Cookies are `httpOnly`; production cookies are `secure`.
+- Routes are protected by middleware.
+- Server actions validate ownership before modifying user records.
+- Cron endpoint is protected with bearer token.
+- Audit logs record important activity.
 
----
+Remaining production hardening recommended:
 
-## Future Enhancements
+- Add login rate limiting.
+- Add session invalidation on password change.
+- Add real password reset delivery through SMS/email.
+- Add formal payment reversal workflow.
+- Add error monitoring such as Sentry.
 
-These are designed for but not yet built:
+## Testing
 
-- PDF statement generation (`@react-pdf/renderer`)
-- SMS integration (Twilio / MSG91)
-- Borrower photo upload (Cloudinary / S3)
-- Export to CSV / Excel
-- Multi-user support (Manager + Viewer roles ready in schema)
-- Push notifications (Web Push API)
+Run:
 
----
-
-## Common Issues
-
-**`prisma generate` fails**
 ```bash
-npm install
-npx prisma generate
+npm test
 ```
 
-**Database connection error**
-- Check `DATABASE_URL` format
-- Ensure `?sslmode=require` is appended for Neon
+Current test coverage includes:
 
-**"Module not found" errors**
-- Check `@/*` path alias in `tsconfig.json`
-- Run `npm run db:generate` to regenerate Prisma types
+- Simple interest.
+- Partial payments.
+- Multiple partial payments.
+- Principal repayment.
+- Loan top-up.
+- Loan closure.
+- Overdue detection.
+- Dashboard received cash calculation.
+- Payment allocation.
 
-**Cron not running on Vercel**
-- Verify `vercel.json` is in root
-- Check CRON_SECRET matches environment variable
-- Vercel Free plan crons have a 60-second timeout
+## Troubleshooting
 
----
+### Build Fails On Google Fonts
 
-*Built as a personal loan management tool. For private use only.*
+The app uses `next/font/google`. The build environment needs network access to Google Fonts.
+
+### Database Connection Error
+
+Check:
+
+- `DATABASE_URL` is set.
+- SSL mode is included if required by the provider.
+- The database is awake and reachable.
+
+### Prisma Client Errors
+
+Run:
+
+```bash
+npm run db:generate
+```
+
+### Vercel Build Error For API Routes
+
+`/api/search` is configured as dynamic Node runtime because it uses cookies and Prisma:
+
+```ts
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+```
+
+### Cron Not Running
+
+Check:
+
+- `vercel.json` exists.
+- `CRON_SECRET` is set.
+- Vercel cron logs.
+
+## Private Use Notice
+
+GuruFinance is designed as a private loan and interest record-keeping tool. Verify calculations and backups before using it as the only source of financial records.
