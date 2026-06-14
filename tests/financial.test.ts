@@ -1174,6 +1174,170 @@ describe("dashboard statistics", () => {
     assert.equal(stats.interestReceivedThisMonth, 2500);
     assert.notEqual(stats.interestReceivedThisMonth, currentDuePaidAmount);
   });
+
+  it("uses collectible dues only for dashboard pending and overdue totals", async () => {
+    const dueQueries: any[] = [];
+
+    const mockPrisma = {
+      loan: {
+        findMany: async () => [
+          { currentPrincipal: 100000, interestRate: 3, loanFrequency: LoanFrequency.MONTHLY },
+        ],
+        count: async () => 0,
+      },
+      borrower: {
+        count: async () => 1,
+      },
+      interestDue: {
+        findMany: async (args: any) => {
+          dueQueries.push(args);
+
+          if (!args.where.status) {
+            return [{ dueAmount: 3000, paidAmount: 1000, waivedAmount: 0, status: DueStatus.PARTIAL }];
+          }
+
+          if (args.where.dueDate?.lte || args.where.dueDate?.lt) {
+            return [{ dueAmount: 3000, paidAmount: 1000, waivedAmount: 0 }];
+          }
+
+          return [];
+        },
+      },
+      payment: {
+        findMany: async () => [],
+      },
+    };
+
+    const { getDashboardStatsAction } = loadPaymentActions(mockPrisma);
+    const stats = await getDashboardStatsAction();
+
+    const pendingQuery = dueQueries.find((query) => query.where.status?.in?.length === 2);
+    const overdueQuery = dueQueries.find((query) => query.where.status?.in?.includes(DueStatus.OVERDUE));
+
+    assert.deepEqual(pendingQuery.where.status.in, [DueStatus.PENDING, DueStatus.PARTIAL]);
+    assert.ok(pendingQuery.where.dueDate.lte instanceof Date);
+    assert.deepEqual(overdueQuery.where.status.in, [DueStatus.PENDING, DueStatus.PARTIAL, DueStatus.OVERDUE]);
+    assert.ok(overdueQuery.where.dueDate.lt instanceof Date);
+    assert.equal(stats.pendingInterest, 2000);
+    assert.equal(stats.overdueInterest, 2000);
+  });
+});
+
+describe("screen data source filters", () => {
+  it("loads today's collections from dues due today and still excludes paid dues", async () => {
+    const dueQueries: any[] = [];
+    const mockPrisma = {
+      interestDue: {
+        findMany: async (args: any) => {
+          dueQueries.push(args);
+          return [
+            {
+              id: "due-today",
+              loanId: "loan-1",
+              dueDate: new Date(),
+              dueAmount: 3000,
+              paidAmount: 1000,
+              waivedAmount: 0,
+              status: DueStatus.PARTIAL,
+              loan: {
+                id: "loan-1",
+                loanNumber: "LN-2026-1001",
+                borrower: { id: "borrower-1", fullName: "Rahul Sharma", mobile: "9876543210" },
+              },
+            },
+          ];
+        },
+      },
+      settings: { findUnique: async () => null },
+    };
+
+    const { getTodayCollectionsAction } = loadPaymentActions(mockPrisma);
+    const collections = await getTodayCollectionsAction();
+
+    assert.deepEqual(dueQueries[0].where.status.in, [DueStatus.PENDING, DueStatus.PARTIAL]);
+    assert.ok(dueQueries[0].where.dueDate.gte instanceof Date);
+    assert.ok(dueQueries[0].where.dueDate.lte instanceof Date);
+    assert.equal(collections[0].remainingAmount, 2000);
+    assert.ok(collections[0].whatsappLink);
+  });
+
+  it("keeps overdue dues actionable in overdue collections", async () => {
+    const dueQueries: any[] = [];
+    const mockPrisma = {
+      interestDue: {
+        findMany: async (args: any) => {
+          dueQueries.push(args);
+          return [
+            {
+              id: "due-overdue",
+              loanId: "loan-1",
+              dueDate: subDays(startOfDay(new Date()), 10),
+              dueAmount: 3000,
+              paidAmount: 1000,
+              waivedAmount: 0,
+              status: DueStatus.OVERDUE,
+              daysOverdue: 10,
+              loan: {
+                id: "loan-1",
+                loanNumber: "LN-2026-1001",
+                currentPrincipal: 50000,
+                borrower: { id: "borrower-1", fullName: "Rahul Sharma", mobile: "9876543210" },
+              },
+            },
+          ];
+        },
+      },
+      settings: { findUnique: async () => null },
+    };
+
+    const { getOverdueAccountsAction } = loadPaymentActions(mockPrisma);
+    const accounts = await getOverdueAccountsAction();
+
+    assert.deepEqual(dueQueries[0].where.status.in, [DueStatus.PENDING, DueStatus.PARTIAL, DueStatus.OVERDUE]);
+    assert.ok(dueQueries[0].where.dueDate.lt instanceof Date);
+    assert.equal(accounts[0].totalOverdue, 2000);
+    assert.equal(accounts[0].overdueCount, 1);
+    assert.ok(accounts[0].whatsappLink);
+  });
+
+  it("clamps current-month reports to today so future dues do not inflate pending totals", async () => {
+    const dueQueries: any[] = [];
+    const mockPrisma = {
+      interestDue: {
+        findMany: async (args: any) => {
+          dueQueries.push(args);
+          return [];
+        },
+      },
+    };
+
+    const { getMonthlyReportAction } = loadPaymentActions(mockPrisma);
+    await getMonthlyReportAction("2026-06");
+
+    assert.ok(dueQueries[0].where.dueDate.gte instanceof Date);
+    assert.ok(dueQueries[0].where.dueDate.lte instanceof Date);
+    assert.ok(dueQueries[0].where.dueDate.lte <= new Date());
+  });
+
+  it("loads borrower list summaries from current and overdue dues only", async () => {
+    const borrowerQueries: any[] = [];
+    const mockPrisma = {
+      borrower: {
+        findMany: async (args: any) => {
+          borrowerQueries.push(args);
+          return [];
+        },
+        count: async () => 0,
+      },
+    };
+
+    const { getBorrowersAction } = loadBorrowerActions(mockPrisma);
+    await getBorrowersAction();
+
+    const dueWhere = borrowerQueries[0].include.loans.select.interestDues.where;
+    assert.deepEqual(dueWhere.status.in, ["PENDING", "PARTIAL", "OVERDUE"]);
+    assert.ok(dueWhere.dueDate.lte instanceof Date);
+  });
 });
 
 describe("interest payment recording", () => {

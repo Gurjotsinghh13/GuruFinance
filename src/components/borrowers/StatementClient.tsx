@@ -104,7 +104,7 @@ export function StatementClient({ borrower, loansWithSummary, whatsappLink }: Pr
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-400">Pending Interest</p>
+              <p className="text-xs text-gray-400">Unpaid Interest</p>
               <p className={`text-base font-bold tabular-nums ${grandTotals.pending > 0 ? "text-red-700" : "text-gray-500"}`}>
                 {formatCurrency(grandTotals.pending)}
               </p>

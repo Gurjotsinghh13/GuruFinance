@@ -84,7 +84,7 @@ export default async function BorrowerDetailPage({ params }: Props) {
             <p className="text-lg font-bold text-emerald-700 tabular-nums">{formatCurrency(totalInterestReceived)}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Pending Interest</p>
+            <p className="text-xs text-gray-500">Unpaid Interest</p>
             <p className={`text-lg font-bold tabular-nums ${totalPending > 0 ? "text-amber-700" : "text-gray-900"}`}>
               {formatCurrency(totalPending)}
             </p>

@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Phone, MessageCircle, AlertTriangle } from "lucide-react";
 import { formatCurrency } from "@/utils";
 import type { OverdueAccount } from "@/types";
@@ -13,9 +12,13 @@ interface Props {
 }
 
 export function OverdueList({ accounts }: Props) {
-  const router = useRouter();
   const [selectedAccount, setSelectedAccount] = useState<OverdueAccount | null>(null);
-  const totalOverdue = accounts.reduce((s, a) => s + a.totalOverdue, 0);
+  const [visibleAccounts, setVisibleAccounts] = useState(accounts);
+  const totalOverdue = visibleAccounts.reduce((s, a) => s + a.totalOverdue, 0);
+
+  useEffect(() => {
+    setVisibleAccounts(accounts);
+  }, [accounts]);
 
   return (
     <section>
@@ -30,9 +33,9 @@ export function OverdueList({ accounts }: Props) {
       </div>
 
       <div className="space-y-2">
-        {accounts.map((account) => (
+        {visibleAccounts.map((account) => (
             <div
-              key={account.borrowerId}
+              key={account.loanId}
               className="card p-4 border-red-200 bg-red-50"
             >
               <div className="flex items-start justify-between gap-3">
@@ -96,9 +99,24 @@ export function OverdueList({ accounts }: Props) {
           defaultAmount={selectedAccount.totalOverdue}
           borrowerName={selectedAccount.borrowerName}
           loanNumber={selectedAccount.loanNumber}
+          onPaymentSuccess={(result) => {
+            setVisibleAccounts((current) => {
+              if (result.allocated >= selectedAccount.totalOverdue) {
+                return current.filter((account) => account.loanId !== selectedAccount.loanId);
+              }
+
+              return current.map((account) =>
+                account.loanId === selectedAccount.loanId
+                  ? {
+                      ...account,
+                      totalOverdue: Math.max(0, account.totalOverdue - result.allocated),
+                    }
+                  : account
+              );
+            });
+          }}
           onClose={() => {
             setSelectedAccount(null);
-            router.refresh();
           }}
         />
       )}

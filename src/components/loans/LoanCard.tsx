@@ -107,7 +107,7 @@ export function LoanCard({ loan, summary }: Props) {
             </p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Pending</p>
+            <p className="text-xs text-gray-500">Unpaid</p>
             <p className={`text-sm font-semibold tabular-nums ${summary.pendingInterest > 0 ? "text-amber-700" : "text-gray-500"}`}>
               {formatCurrency(summary.pendingInterest)}
             </p>

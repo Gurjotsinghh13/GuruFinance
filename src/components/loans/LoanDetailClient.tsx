@@ -161,7 +161,7 @@ export function LoanDetailClient({ loan, summary, balanceWhatsappLink }: Props) 
               className="btn-primary text-sm"
             >
               <Plus className="w-4 h-4" />
-              Payment
+              Receive
             </button>
           )}
         </div>
@@ -184,7 +184,7 @@ export function LoanDetailClient({ loan, summary, balanceWhatsappLink }: Props) 
             </p>
           </div>
           <div className={`rounded-lg p-3 ${summary.overdueInterest > 0 ? "bg-red-50" : "bg-amber-50"}`}>
-            <p className="text-xs text-gray-500">Pending Interest</p>
+            <p className="text-xs text-gray-500">Unpaid Interest</p>
             <p className={`text-lg font-bold tabular-nums ${summary.overdueInterest > 0 ? "text-red-700" : "text-amber-700"}`}>
               {formatCurrency(summary.pendingInterest + summary.overdueInterest)}
             </p>
@@ -256,7 +256,7 @@ export function LoanDetailClient({ loan, summary, balanceWhatsappLink }: Props) 
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
-              {tab}
+              {tab === "payments" ? "received" : tab}
             </button>
           ))}
         </div>
@@ -410,7 +410,7 @@ export function LoanDetailClient({ loan, summary, balanceWhatsappLink }: Props) 
           defaultAmount={nextDue ? Number(nextDue.dueAmount) - Number(nextDue.paidAmount) : 0}
           borrowerName={loan.borrower.fullName}
           loanNumber={loan.loanNumber}
-          onClose={() => { setShowPaymentModal(false); router.refresh(); }}
+          onClose={() => setShowPaymentModal(false)}
         />
       )}
 

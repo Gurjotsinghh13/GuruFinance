@@ -42,12 +42,18 @@ export function BorrowersList({ borrowers, initialSearch, showArchived }: Props)
   }
 
   function getBorrowerStats(loans: BorrowerData["loans"]) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
+
     const activeLoans = loans.filter((l) => l.status === "ACTIVE");
     const totalPrincipal = activeLoans.reduce(
       (s, l) => s + Number(l.currentPrincipal),
       0
     );
-    let pendingInterest = 0;
+    let overdueInterest = 0;
+    let dueTodayInterest = 0;
     let hasOverdue = false;
 
     for (const loan of activeLoans) {
@@ -55,13 +61,26 @@ export function BorrowersList({ borrowers, initialSearch, showArchived }: Props)
         const outstanding =
           Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount);
         if (outstanding > 0) {
-          pendingInterest += outstanding;
-          if (due.status === DueStatus.OVERDUE) hasOverdue = true;
+          const dueDate = due.dueDate ? new Date(due.dueDate) : null;
+          const isOverdue =
+            due.status === DueStatus.OVERDUE ||
+            (!!dueDate && dueDate.getTime() < todayStart.getTime());
+          const isDueToday =
+            !!dueDate &&
+            dueDate.getTime() >= todayStart.getTime() &&
+            dueDate.getTime() < todayEnd.getTime();
+
+          if (isOverdue) {
+            overdueInterest += outstanding;
+            hasOverdue = true;
+          } else if (isDueToday) {
+            dueTodayInterest += outstanding;
+          }
         }
       }
     }
 
-    return { totalPrincipal, pendingInterest, hasOverdue, activeLoanCount: activeLoans.length };
+    return { totalPrincipal, overdueInterest, dueTodayInterest, hasOverdue, activeLoanCount: activeLoans.length };
   }
 
   return (
@@ -146,9 +165,14 @@ export function BorrowersList({ borrowers, initialSearch, showArchived }: Props)
                     <span className="text-xs text-gray-600 tabular-nums">
                       Principal: <span className="font-medium">{formatCurrency(stats.totalPrincipal)}</span>
                     </span>
-                    {stats.pendingInterest > 0 && (
-                      <span className={`text-xs tabular-nums font-medium ${stats.hasOverdue ? "text-red-600" : "text-amber-600"}`}>
-                        Due: {formatCurrency(stats.pendingInterest)}
+                    {stats.overdueInterest > 0 && (
+                      <span className="text-xs tabular-nums font-medium text-red-600">
+                        Overdue: {formatCurrency(stats.overdueInterest)}
+                      </span>
+                    )}
+                    {stats.dueTodayInterest > 0 && (
+                      <span className="text-xs tabular-nums font-medium text-amber-600">
+                        Due Today: {formatCurrency(stats.dueTodayInterest)}
                       </span>
                     )}
                   </div>

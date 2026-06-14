@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { X, Loader2, IndianRupee } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
 import { recordPaymentAction } from "@/app/actions/payments";
 import { PaymentMethod } from "@prisma/client";
 import { formatCurrency } from "@/utils";
@@ -14,6 +14,12 @@ interface Props {
   borrowerName: string;
   loanNumber: string;
   onClose: () => void;
+  onPaymentSuccess?: (result: {
+    amount: number;
+    allocated: number;
+    unallocated: number;
+    receiptWhatsappLink?: string;
+  }) => void;
 }
 
 const PAYMENT_METHODS = [
@@ -30,11 +36,11 @@ export function PaymentModal({
   borrowerName,
   loanNumber,
   onClose,
+  onPaymentSuccess,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   const [method, setMethod] = useState<PaymentMethod>(PaymentMethod.CASH);
   const [showChequeFields, setShowChequeFields] = useState(false);
 
@@ -71,15 +77,19 @@ export function PaymentModal({
       if (result.error) {
         setError(result.error);
       } else {
-        setSuccess(true);
+        onPaymentSuccess?.({
+          amount,
+          allocated: result.allocated || 0,
+          unallocated: result.unallocated || 0,
+          receiptWhatsappLink: result.receiptWhatsappLink,
+        });
+        onClose();
         router.refresh();
         if (result.receiptWhatsappLink) {
-          window.open(result.receiptWhatsappLink, "_blank", "noopener,noreferrer");
+          setTimeout(() => {
+            window.open(result.receiptWhatsappLink, "_blank", "noopener,noreferrer");
+          }, 0);
         }
-        setTimeout(() => {
-          onClose();
-          router.refresh();
-        }, 1200);
       }
     });
   }
@@ -92,7 +102,7 @@ export function PaymentModal({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div>
-            <h3 className="font-semibold text-gray-900">Record Payment</h3>
+            <h3 className="font-semibold text-gray-900">Receive Interest</h3>
             <p className="text-xs text-gray-500 mt-0.5">
               {borrowerName} · {loanNumber}
             </p>
@@ -105,17 +115,7 @@ export function PaymentModal({
           </button>
         </div>
 
-        {/* Success state */}
-        {success ? (
-          <div className="p-8 text-center">
-            <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
-              <IndianRupee className="w-7 h-7 text-emerald-600" />
-            </div>
-            <p className="font-semibold text-gray-900">Payment Recorded!</p>
-            <p className="text-sm text-gray-500 mt-1">Ledger updated successfully.</p>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
             {/* Amount */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -143,7 +143,7 @@ export function PaymentModal({
             {/* Date */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Payment Date
+                Received Date
               </label>
               <input
                 name="paymentDate"
@@ -155,10 +155,10 @@ export function PaymentModal({
               />
             </div>
 
-            {/* Payment method */}
+            {/* Receive method */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Payment Method
+                Received By
               </label>
               <div className="grid grid-cols-2 gap-2">
                 {PAYMENT_METHODS.map((m) => (
@@ -264,12 +264,11 @@ export function PaymentModal({
                     Saving...
                   </>
                 ) : (
-                  "Record Payment"
+                  "Receive"
                 )}
               </button>
             </div>
-          </form>
-        )}
+        </form>
       </div>
     </div>
   );

@@ -24,7 +24,7 @@ export function DashboardStats({ stats }: { stats: DashboardStats }) {
     {
       label: "Overdue Interest",
       value: formatCurrencyCompact(stats.overdueInterest),
-      sub: `${stats.overdueCount} accounts`,
+      sub: `${stats.overdueCount} dues`,
       color: stats.overdueInterest > 0 ? "text-red-700" : "text-gray-900",
     },
     {
@@ -34,7 +34,7 @@ export function DashboardStats({ stats }: { stats: DashboardStats }) {
       color: "text-gray-900",
     },
     {
-      label: "Pending Interest",
+      label: "Unpaid Interest",
       value: formatCurrencyCompact(stats.pendingInterest),
       sub: "not yet overdue",
       color: "text-amber-700",

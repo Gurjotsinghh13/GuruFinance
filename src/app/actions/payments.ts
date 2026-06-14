@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { recordPayment } from "@/features/payment-engine";
-import type { RecordPaymentInput, DashboardStats, TodayCollection, OverdueAccount } from "@/types";
+import type { RecordPaymentInput, DashboardStats, TodayCollection, OverdueAccount, CollectedTodayPayment } from "@/types";
 import { startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns";
 import { DueStatus, LoanStatus } from "@prisma/client";
 import { buildBalanceReminderLink, buildDueReminderLink, buildPaymentReceiptLink } from "@/features/whatsapp";
@@ -230,6 +230,42 @@ export async function getOverdueAccountsAction(): Promise<OverdueAccount[]> {
       }),
     }))
   );
+}
+
+// ============================================================
+// GET TODAY'S RECEIVED PAYMENTS
+// ============================================================
+
+export async function getCollectedTodayPaymentsAction(): Promise<CollectedTodayPayment[]> {
+  const session = await requireAuth();
+  const today = new Date();
+  const dayStart = startOfDay(today);
+  const dayEnd = endOfDay(today);
+
+  const payments = await prisma.payment.findMany({
+    where: {
+      createdAt: { gte: dayStart, lte: dayEnd },
+      loan: { borrower: { userId: session.id, isArchived: false } },
+    },
+    include: {
+      loan: {
+        select: {
+          loanNumber: true,
+          borrower: { select: { fullName: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+
+  return payments.map((payment) => ({
+    id: payment.id,
+    borrowerName: payment.loan.borrower.fullName,
+    loanNumber: payment.loan.loanNumber,
+    amount: Number(payment.amount),
+    receivedAt: payment.createdAt,
+  }));
 }
 
 // ============================================================

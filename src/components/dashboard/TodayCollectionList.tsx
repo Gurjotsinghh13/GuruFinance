@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Phone, MessageCircle, IndianRupee, CheckCircle2, Clock } from "lucide-react";
 import { formatCurrency } from "@/utils";
 import type { TodayCollection } from "@/types";
 import { PaymentModal } from "@/components/payments/PaymentModal";
+import { DueStatus } from "@prisma/client";
 
 interface Props {
   collections: TodayCollection[];
@@ -12,8 +13,13 @@ interface Props {
 
 export function TodayCollectionList({ collections }: Props) {
   const [selectedDue, setSelectedDue] = useState<TodayCollection | null>(null);
+  const [visibleCollections, setVisibleCollections] = useState(collections);
 
-  const totalExpected = collections.reduce((s, c) => s + c.remainingAmount, 0);
+  useEffect(() => {
+    setVisibleCollections(collections);
+  }, [collections]);
+
+  const totalExpected = visibleCollections.reduce((s, c) => s + c.remainingAmount, 0);
 
   return (
     <section>
@@ -28,7 +34,7 @@ export function TodayCollectionList({ collections }: Props) {
       </div>
 
       {/* Empty state */}
-      {collections.length === 0 && (
+      {visibleCollections.length === 0 && (
         <div className="card p-8 text-center">
           <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
           <p className="text-sm font-medium text-gray-700">No collections due today</p>
@@ -38,7 +44,7 @@ export function TodayCollectionList({ collections }: Props) {
 
       {/* Collection cards */}
       <div className="space-y-2">
-        {collections.map((item) => (
+        {visibleCollections.map((item) => (
           <CollectionCard
             key={item.dueId}
             item={item}
@@ -55,6 +61,24 @@ export function TodayCollectionList({ collections }: Props) {
           defaultAmount={selectedDue.remainingAmount}
           borrowerName={selectedDue.borrowerName}
           loanNumber={selectedDue.loanNumber}
+          onPaymentSuccess={(result) => {
+            setVisibleCollections((current) => {
+              if (result.allocated >= selectedDue.remainingAmount) {
+                return current.filter((item) => item.dueId !== selectedDue.dueId);
+              }
+
+              return current.map((item) =>
+                item.dueId === selectedDue.dueId
+                  ? {
+                      ...item,
+                      paidAmount: item.paidAmount + result.allocated,
+                      remainingAmount: Math.max(0, item.remainingAmount - result.allocated),
+                      status: DueStatus.PARTIAL,
+                    }
+                  : item
+              );
+            });
+          }}
           onClose={() => setSelectedDue(null)}
         />
       )}

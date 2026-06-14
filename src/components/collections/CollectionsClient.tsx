@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Phone, MessageCircle, CheckCircle2 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/utils";
@@ -36,20 +35,28 @@ const VIEWS = [
   { value: "overdue", label: "Overdue" },
 ];
 
-export function CollectionsClient({ dues, totalExpected, activeView }: Props) {
-  const router = useRouter();
+export function CollectionsClient({ dues, activeView }: Props) {
   const [selectedDue, setSelectedDue] = useState<DueItem | null>(null);
+  const [visibleDues, setVisibleDues] = useState(dues);
+  const visibleTotalExpected = visibleDues.reduce(
+    (s, d) => s + Number(d.dueAmount) - Number(d.paidAmount) - Number(d.waivedAmount),
+    0
+  );
+
+  useEffect(() => {
+    setVisibleDues(dues);
+  }, [dues]);
 
   return (
     <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">Collections</h1>
-        {totalExpected > 0 && (
+        {visibleTotalExpected > 0 && (
           <div className="text-right">
             <p className="text-xs text-gray-500">Expected</p>
             <p className="text-base font-bold text-indigo-700 tabular-nums">
-              {formatCurrency(totalExpected)}
+              {formatCurrency(visibleTotalExpected)}
             </p>
           </div>
         )}
@@ -73,7 +80,7 @@ export function CollectionsClient({ dues, totalExpected, activeView }: Props) {
       </div>
 
       {/* Empty */}
-      {dues.length === 0 && (
+      {visibleDues.length === 0 && (
         <div className="card p-10 text-center">
           <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
           <p className="text-sm font-medium text-gray-700">
@@ -88,7 +95,7 @@ export function CollectionsClient({ dues, totalExpected, activeView }: Props) {
 
       {/* Due cards */}
       <div className="space-y-2">
-        {dues.map((due) => {
+        {visibleDues.map((due) => {
           const outstanding =
             Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount);
           const dueDate = new Date(due.dueDate);
@@ -184,7 +191,29 @@ export function CollectionsClient({ dues, totalExpected, activeView }: Props) {
           }
           borrowerName={selectedDue.loan.borrower.fullName}
           loanNumber={selectedDue.loan.loanNumber}
-          onClose={() => { setSelectedDue(null); router.refresh(); }}
+          onPaymentSuccess={(result) => {
+            const outstanding =
+              Number(selectedDue.dueAmount) -
+              Number(selectedDue.paidAmount) -
+              Number(selectedDue.waivedAmount);
+
+            setVisibleDues((current) => {
+              if (result.allocated >= outstanding) {
+                return current.filter((due) => due.id !== selectedDue.id);
+              }
+
+              return current.map((due) =>
+                due.id === selectedDue.id
+                  ? {
+                      ...due,
+                      paidAmount: Number(due.paidAmount) + result.allocated,
+                      status: DueStatus.PARTIAL,
+                    }
+                  : due
+              );
+            });
+          }}
+          onClose={() => setSelectedDue(null)}
         />
       )}
     </div>

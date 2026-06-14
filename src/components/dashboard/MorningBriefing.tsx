@@ -16,6 +16,9 @@ export function MorningBriefing({
   overdueAmount,
   pendingInterest,
 }: Props) {
+  const todayLabel = `${todayCount} due${todayCount === 1 ? "" : "s"} today`;
+  const overdueLabel = `${overdueCount} overdue due${overdueCount === 1 ? "" : "s"}`;
+
   return (
     <div className="grid grid-cols-3 gap-3">
       {/* Today */}
@@ -25,10 +28,10 @@ export function MorningBriefing({
           <span className="text-xs font-medium text-gray-500">Today</span>
         </div>
         <p className="text-xl font-bold text-gray-900 tabular-nums">
-          {todayCount}
+          {formatCurrency(todayAmount)}
         </p>
         <p className="text-xs text-gray-500 mt-0.5 tabular-nums">
-          {formatCurrency(todayAmount)}
+          {todayLabel}
         </p>
       </div>
 
@@ -39,10 +42,10 @@ export function MorningBriefing({
           <span className="text-xs font-medium text-gray-500">Overdue</span>
         </div>
         <p className={`text-xl font-bold tabular-nums ${overdueCount > 0 ? "text-red-700" : "text-gray-900"}`}>
-          {overdueCount}
+          {formatCurrency(overdueAmount)}
         </p>
         <p className="text-xs text-gray-500 mt-0.5 tabular-nums">
-          {formatCurrency(overdueAmount)}
+          {overdueLabel}
         </p>
       </div>
 
@@ -50,12 +53,12 @@ export function MorningBriefing({
       <div className="card p-4">
         <div className="flex items-center gap-2 mb-2">
           <TrendingDown className="w-4 h-4 text-amber-500" />
-          <span className="text-xs font-medium text-gray-500">Pending</span>
+          <span className="text-xs font-medium text-gray-500">Unpaid</span>
         </div>
         <p className="text-xl font-bold text-gray-900 tabular-nums">
           {formatCurrency(pendingInterest)}
         </p>
-        <p className="text-xs text-gray-500 mt-0.5">interest due</p>
+        <p className="text-xs text-gray-500 mt-0.5">interest</p>
       </div>
     </div>
   );

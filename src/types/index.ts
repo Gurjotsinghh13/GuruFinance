@@ -102,6 +102,14 @@ export type OverdueAccount = {
   whatsappLink?: string;
 };
 
+export type CollectedTodayPayment = {
+  id: string;
+  borrowerName: string;
+  loanNumber: string;
+  amount: number;
+  receivedAt: Date;
+};
+
 // ============================================================
 // FORM INPUT TYPES
 // ============================================================

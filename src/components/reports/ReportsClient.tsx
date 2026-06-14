@@ -122,7 +122,7 @@ export function ReportsClient({ monthlyData, activeLoansSummary, overdueTotal }:
                 <th>Month</th>
                 <th className="text-right">Expected</th>
                 <th className="text-right">Received</th>
-                <th className="text-right">Pending</th>
+                <th className="text-right">Unpaid</th>
                 <th className="text-right">Rate</th>
               </tr>
             </thead>
@@ -158,7 +158,7 @@ export function ReportsClient({ monthlyData, activeLoansSummary, overdueTotal }:
                 <th>Borrower</th>
                 <th>Loan</th>
                 <th className="text-right">Principal</th>
-                <th className="text-right">Pending</th>
+                <th className="text-right">Unpaid</th>
                 <th className="text-right">Rate</th>
               </tr>
             </thead>
