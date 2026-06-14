@@ -19,7 +19,7 @@ interface LoanSummary {
   interestRate: any;
   loanFrequency: string;
   borrower: { fullName: string };
-  interestDues: { dueAmount: any; paidAmount: any; waivedAmount: any; status: string }[];
+  interestDues: { dueAmount: any; paidAmount: any; waivedAmount: any; status: string; dueDate?: Date | string }[];
 }
 
 interface Props {

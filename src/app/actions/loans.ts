@@ -199,6 +199,7 @@ export async function getLoansAction(params?: {
   borrowerId?: string;
 }) {
   const session = await requireAuth();
+  const today = new Date();
 
   const loans = await prisma.loan.findMany({
     where: {
@@ -209,7 +210,10 @@ export async function getLoansAction(params?: {
     include: {
       borrower: { select: { id: true, fullName: true, mobile: true } },
       interestDues: {
-        where: { status: { in: ["PENDING", "PARTIAL", "OVERDUE"] } },
+        where: {
+          status: { in: ["PENDING", "PARTIAL", "OVERDUE"] },
+          dueDate: { lte: today },
+        },
         orderBy: { dueDate: "asc" },
       },
       _count: { select: { payments: true } },

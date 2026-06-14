@@ -11,7 +11,7 @@ import {
 import { allocatePayment } from "@/features/interest-engine";
 import { regenerateFutureDues, stopDueGeneration } from "@/features/due-engine";
 import { roundCurrency } from "@/features/interest-engine";
-import type { RecordPaymentInput, PrincipalRepaymentInput, LoanTopUpInput } from "@/types";
+import type { RecordPaymentInput, PrincipalRepaymentInput, LoanTopUpInput, PaymentAllocationDetail } from "@/types";
 import { generateReceiptNumber, generateLoanNumber } from "@/utils";
 
 // ============================================================
@@ -25,13 +25,20 @@ import { generateReceiptNumber, generateLoanNumber } from "@/utils";
 export async function recordPayment(
   input: RecordPaymentInput,
   userId: string
-): Promise<{ paymentId: string; allocated: number; unallocated: number }> {
+): Promise<{
+  paymentId: string;
+  receiptNumber: string;
+  allocated: number;
+  unallocated: number;
+  allocationDetails: PaymentAllocationDetail[];
+}> {
   return await prisma.$transaction(async (tx) => {
     // Get all pending/partial/overdue dues for this loan
     const dues = await tx.interestDue.findMany({
       where: {
         loanId: input.loanId,
         status: { in: [DueStatus.PENDING, DueStatus.PARTIAL, DueStatus.OVERDUE] },
+        dueDate: { lte: input.paymentDate },
       },
       orderBy: { dueDate: "asc" },
     });
@@ -43,9 +50,10 @@ export async function recordPayment(
       paidAmount: Number(d.paidAmount),
       waivedAmount: Number(d.waivedAmount),
       status: d.status,
+      dueDate: d.dueDate,
     }));
 
-    const allocationResult = allocatePayment(input.amount, duesForAllocation);
+    const allocationResult = allocatePayment(input.amount, duesForAllocation, input.paymentDate);
 
     // Handle cheque if applicable
     let chequeId: string | undefined;
@@ -80,6 +88,8 @@ export async function recordPayment(
     });
 
     // Create allocations and update due statuses
+    const allocationDetails: PaymentAllocationDetail[] = [];
+
     for (const allocation of allocationResult.allocations) {
       await tx.paymentAllocation.create({
         data: {
@@ -111,6 +121,15 @@ export async function recordPayment(
         where: { id: allocation.dueId },
         data: { paidAmount: newPaidAmount, status: newStatus },
       });
+
+      allocationDetails.push({
+        dueId: due.id,
+        dueDate: due.dueDate,
+        periodStart: due.periodStart,
+        periodEnd: due.periodEnd,
+        amountAllocated: allocation.amount,
+        remainingForDue: Math.max(0, outstanding),
+      });
     }
 
     // Audit log
@@ -132,8 +151,10 @@ export async function recordPayment(
 
     return {
       paymentId: payment.id,
+      receiptNumber: payment.receiptNumber || "",
       allocated: allocationResult.totalAllocated,
       unallocated: allocationResult.unallocated,
+      allocationDetails,
     };
   });
 }

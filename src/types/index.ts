@@ -143,6 +143,15 @@ export type RecordPaymentInput = {
   chequeDate?: Date;
 };
 
+export type PaymentAllocationDetail = {
+  dueId: string;
+  dueDate: Date;
+  periodStart: Date;
+  periodEnd: Date;
+  amountAllocated: number;
+  remainingForDue: number;
+};
+
 export type PrincipalRepaymentInput = {
   loanId: string;
   amount: number;

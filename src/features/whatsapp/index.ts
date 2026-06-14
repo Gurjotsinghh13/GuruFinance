@@ -7,6 +7,8 @@
 import { prisma } from "@/lib/prisma";
 import { MessageType } from "@prisma/client";
 import { createWhatsAppLink, fillTemplate, formatCurrency, formatDate } from "@/utils";
+import { format } from "date-fns";
+import type { PaymentAllocationDetail } from "@/types";
 
 // ============================================================
 // DEFAULT TEMPLATES
@@ -15,9 +17,9 @@ import { createWhatsAppLink, fillTemplate, formatCurrency, formatDate } from "@/
 export const DEFAULT_TEMPLATES: Record<MessageType, string> = {
   [MessageType.DUE_REMINDER]: `Dear {{borrowerName}},
 
-Your interest payment of {{amount}} is due on {{dueDate}} for loan {{loanNumber}}.
+Your interest payment of {{amount}} is scheduled for {{dueDate}} for loan {{loanNumber}}.
 
-Please arrange payment at your earliest convenience.
+Please arrange payment on the due date.
 
 Thank you`,
 
@@ -36,16 +38,18 @@ Thank you`,
 
   [MessageType.PAYMENT_RECEIPT]: `Dear {{borrowerName}},
 
-Payment received. Thank you!
+Payment received. Thank you.
 
-Receipt: {{receiptNumber}}
+{{allocationDetails}}
+
+Receipt Number: {{receiptNumber}}
 Date: {{paymentDate}}
 Amount Received: {{amount}}
 Payment Method: {{paymentMethod}}
-Loan: {{loanNumber}}
-Remaining Balance: {{remainingBalance}}
+Loan Number: {{loanNumber}}
+Remaining Pending Interest: {{remainingBalance}}
 
-Thank you for your payment.`,
+Thank you.`,
 
   [MessageType.ACCOUNT_STATEMENT]: `Dear {{borrowerName}},
 
@@ -110,8 +114,10 @@ export function renderPaymentReceiptMessage(
     loanNumber: string;
     receiptNumber: string;
     remainingBalance: number;
+    allocationDetails?: PaymentAllocationDetail[];
   }
 ): string {
+  const allocationDetails = formatAllocationDetails(params.allocationDetails || []);
   return fillTemplate(template, {
     borrowerName: params.borrowerName,
     amount: formatCurrency(params.amount),
@@ -120,7 +126,28 @@ export function renderPaymentReceiptMessage(
     loanNumber: params.loanNumber,
     receiptNumber: params.receiptNumber,
     remainingBalance: formatCurrency(params.remainingBalance),
+    allocationDetails,
   });
+}
+
+export function formatAllocationDetails(allocations: PaymentAllocationDetail[]): string {
+  if (allocations.length === 0) return "";
+
+  return allocations
+    .map((allocation) => {
+      const lines = [
+        `Interest Period: ${format(new Date(allocation.dueDate), "MMMM yyyy")}`,
+        `Due Date: ${formatDate(allocation.dueDate)}`,
+        `Amount Allocated: ${formatCurrency(allocation.amountAllocated)}`,
+      ];
+
+      if (allocation.remainingForDue > 0) {
+        lines.push(`Remaining For This Due: ${formatCurrency(allocation.remainingForDue)}`);
+      }
+
+      return lines.join("\n");
+    })
+    .join("\n\n");
 }
 
 export function renderBalanceReminderMessage(
@@ -194,6 +221,7 @@ export async function buildPaymentReceiptLink(params: {
   loanNumber: string;
   receiptNumber: string;
   remainingBalance: number;
+  allocationDetails?: PaymentAllocationDetail[];
 }): Promise<string> {
   const template = await getTemplate(MessageType.PAYMENT_RECEIPT);
   const message = renderPaymentReceiptMessage(template, params);

@@ -277,6 +277,7 @@ export type DueForAllocation = {
   paidAmount: number;
   waivedAmount: number;
   status: string;
+  dueDate?: Date | string;
 };
 
 export type AllocationResult = {
@@ -287,11 +288,17 @@ export type AllocationResult = {
 
 export function allocatePayment(
   paymentAmount: number,
-  dues: DueForAllocation[]
+  dues: DueForAllocation[],
+  asOfDate: Date = new Date()
 ): AllocationResult {
+  const asOf = startOfDay(asOfDate);
   // Sort: OVERDUE first, then PENDING, then PARTIAL — oldest due date first
   const pendingDues = dues
-    .filter((d) => ["PENDING", "PARTIAL", "OVERDUE"].includes(d.status))
+    .filter((d) => {
+      if (!["PENDING", "PARTIAL", "OVERDUE"].includes(d.status)) return false;
+      if (!d.dueDate) return true;
+      return startOfDay(new Date(d.dueDate)) <= asOf;
+    })
     .sort((a, b) => {
       // Overdue before pending
       if (a.status === "OVERDUE" && b.status !== "OVERDUE") return -1;
@@ -330,12 +337,14 @@ export function allocatePayment(
 export type LoanSummaryInput = {
   originalPrincipal: number;
   currentPrincipal: number;
+  asOfDate?: Date;
   dues: {
     dueAmount: number;
     paidAmount: number;
     waivedAmount: number;
     status: string;
     penaltyAmount: number;
+    dueDate?: Date | string;
   }[];
 };
 
@@ -354,15 +363,24 @@ export function calculateLoanSummary(input: LoanSummaryInput): LoanSummaryOutput
   let pendingInterest = 0;
   let overdueInterest = 0;
   let totalPenalties = 0;
+  const asOf = startOfDay(input.asOfDate || new Date());
 
   for (const due of input.dues) {
+    const dueDate = due.dueDate ? startOfDay(new Date(due.dueDate)) : null;
+    const isCollectible = !dueDate || dueDate <= asOf;
+    const isOverdue =
+      !!dueDate &&
+      dueDate < asOf &&
+      ["PENDING", "PARTIAL", "OVERDUE"].includes(due.status);
+
     totalInterestCharged += due.dueAmount + due.penaltyAmount;
     totalInterestReceived += due.paidAmount;
     totalPenalties += due.penaltyAmount;
 
     const outstanding = due.dueAmount - due.paidAmount - due.waivedAmount;
+    if (!isCollectible) continue;
 
-    if (due.status === "OVERDUE") {
+    if (due.status === "OVERDUE" || isOverdue) {
       overdueInterest += outstanding;
     } else if (["PENDING", "PARTIAL"].includes(due.status)) {
       pendingInterest += outstanding;

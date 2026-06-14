@@ -168,12 +168,14 @@ function loadPaymentActions(mockPrisma: MockPrisma, options: any = {}) {
   const nextCachePath = require.resolve("next/cache");
   const paymentActionsPath = require.resolve("../src/app/actions/payments");
   const paymentEnginePath = require.resolve("../src/features/payment-engine");
+  const whatsappPath = require.resolve("../src/features/whatsapp");
 
   delete require.cache[prismaPath];
   delete require.cache[authPath];
   delete require.cache[nextCachePath];
   delete require.cache[paymentActionsPath];
   delete require.cache[paymentEnginePath];
+  delete require.cache[whatsappPath];
 
   require.cache[prismaPath] = {
     id: prismaPath,
@@ -296,6 +298,49 @@ describe("WhatsApp template rendering", () => {
       "RCT-20260614-1234 Sunita Devi paid \u20b92,250 on 14 Jun 2026 by UPI for LN-2026-3003 balance \u20b977,250"
     );
   });
+
+  it("renders payment receipt allocation details for partial and multi-due payments", () => {
+    const { renderPaymentReceiptMessage } = loadWhatsAppFeature({
+      settings: { findUnique: async () => null },
+    });
+
+    const message = renderPaymentReceiptMessage(
+      "{{allocationDetails}}",
+      {
+        borrowerName: "Rahul Sharma",
+        amount: 4000,
+        paymentDate: new Date("2026-07-15"),
+        paymentMethod: "CASH",
+        loanNumber: "LN-2026-1001",
+        receiptNumber: "RCT-20260715-1001",
+        remainingBalance: 2000,
+        allocationDetails: [
+          {
+            dueId: "june-due",
+            dueDate: new Date("2026-06-05"),
+            periodStart: new Date("2026-05-05"),
+            periodEnd: new Date("2026-06-05"),
+            amountAllocated: 3000,
+            remainingForDue: 0,
+          },
+          {
+            dueId: "july-due",
+            dueDate: new Date("2026-07-05"),
+            periodStart: new Date("2026-06-05"),
+            periodEnd: new Date("2026-07-05"),
+            amountAllocated: 1000,
+            remainingForDue: 2000,
+          },
+        ],
+      }
+    );
+
+    assert.equal(
+      message,
+      "Interest Period: June 2026\nDue Date: 05 Jun 2026\nAmount Allocated: \u20b93,000\n\nInterest Period: July 2026\nDue Date: 05 Jul 2026\nAmount Allocated: \u20b91,000\nRemaining For This Due: \u20b92,000"
+    );
+  });
+
 
   it("renders account statement templates with statement totals", () => {
     const { renderAccountStatementMessage } = loadWhatsAppFeature({
@@ -457,6 +502,96 @@ describe("financial calculations", () => {
     ]);
     assert.equal(finalPayment.totalAllocated, 500);
     assert.equal(finalPayment.unallocated, 300);
+  });
+});
+
+describe("due lifecycle collectability", () => {
+  const futureDue = {
+    id: "july-interest",
+    dueAmount: 3000,
+    paidAmount: 0,
+    waivedAmount: 0,
+    status: DueStatus.PENDING,
+    penaltyAmount: 0,
+    dueDate: new Date("2026-07-15"),
+  };
+
+  it("does not treat a 15 July due as collectible on 20 June", () => {
+    const summary = calculateLoanSummary({
+      originalPrincipal: 100000,
+      currentPrincipal: 100000,
+      asOfDate: new Date("2026-06-20"),
+      dues: [futureDue],
+    });
+    const allocation = allocatePayment(3000, [futureDue], new Date("2026-06-20"));
+
+    assert.equal(summary.pendingInterest, 0);
+    assert.equal(summary.overdueInterest, 0);
+    assert.equal(allocation.totalAllocated, 0);
+    assert.equal(allocation.unallocated, 3000);
+  });
+
+  it("treats a 15 July due as collectible on 15 July", () => {
+    const summary = calculateLoanSummary({
+      originalPrincipal: 100000,
+      currentPrincipal: 100000,
+      asOfDate: new Date("2026-07-15"),
+      dues: [futureDue],
+    });
+    const allocation = allocatePayment(3000, [futureDue], new Date("2026-07-15"));
+
+    assert.equal(summary.pendingInterest, 3000);
+    assert.equal(summary.overdueInterest, 0);
+    assert.equal(allocation.totalAllocated, 3000);
+    assert.equal(allocation.unallocated, 0);
+  });
+
+  it("treats an unpaid 15 July due as overdue on 16 July", () => {
+    const summary = calculateLoanSummary({
+      originalPrincipal: 100000,
+      currentPrincipal: 100000,
+      asOfDate: new Date("2026-07-16"),
+      dues: [futureDue],
+    });
+
+    assert.equal(summary.pendingInterest, 0);
+    assert.equal(summary.overdueInterest, 3000);
+  });
+
+  it("excludes future generated dues from outstanding interest", () => {
+    const summary = calculateLoanSummary({
+      originalPrincipal: 100000,
+      currentPrincipal: 100000,
+      asOfDate: new Date("2026-06-15"),
+      dues: [
+        {
+          dueAmount: 3000,
+          paidAmount: 0,
+          waivedAmount: 0,
+          status: DueStatus.OVERDUE,
+          penaltyAmount: 0,
+          dueDate: new Date("2026-06-05"),
+        },
+        {
+          dueAmount: 3000,
+          paidAmount: 0,
+          waivedAmount: 0,
+          status: DueStatus.PENDING,
+          penaltyAmount: 0,
+          dueDate: new Date("2026-07-05"),
+        },
+        {
+          dueAmount: 3000,
+          paidAmount: 0,
+          waivedAmount: 0,
+          status: DueStatus.PENDING,
+          penaltyAmount: 0,
+          dueDate: new Date("2026-08-05"),
+        },
+      ],
+    });
+
+    assert.equal(summary.pendingInterest + summary.overdueInterest, 3000);
   });
 });
 
@@ -1118,5 +1253,246 @@ describe("interest payment recording", () => {
     );
     assert.equal(dueUpdates[0].data.status, DueStatus.PAID);
     assert.equal(dueUpdates[1].data.status, DueStatus.PARTIAL);
+  });
+
+  it("marks a due today as paid after full payment", async () => {
+    const dueUpdates: any[] = [];
+    const today = new Date("2026-07-15");
+
+    const mockPrisma = {
+      $transaction: async (callback: any) => callback(mockPrisma),
+      interestDue: {
+        findMany: async () => [
+          {
+            id: "today-due",
+            dueDate: today,
+            dueAmount: 3000,
+            paidAmount: 0,
+            waivedAmount: 0,
+            status: DueStatus.PENDING,
+          },
+        ],
+        update: async (args: any) => {
+          dueUpdates.push(args);
+          return args.data;
+        },
+      },
+      payment: {
+        create: async (args: any) => ({ id: "payment-today", receiptNumber: "RCT-20260715-1001", ...args.data }),
+      },
+      paymentAllocation: {
+        create: async (args: any) => args.data,
+      },
+      auditLog: {
+        create: async (args: any) => args.data,
+      },
+    };
+
+    const { recordPayment } = loadPaymentEngine(mockPrisma, {
+      regenerateFutureDues: async () => undefined,
+      stopDueGeneration: async () => undefined,
+    });
+
+    const result = await recordPayment(
+      {
+        loanId: "loan-current",
+        amount: 3000,
+        paymentDate: today,
+        paymentMethod: PaymentMethod.CASH,
+      },
+      "user-1"
+    );
+
+    assert.match(result.receiptNumber, /^RCT-/);
+    assert.equal(result.allocated, 3000);
+    assert.equal(dueUpdates[0].data.paidAmount, 3000);
+    assert.equal(dueUpdates[0].data.status, DueStatus.PAID);
+  });
+
+  it("keeps an overdue due collectible and marks it partial after partial payment", async () => {
+    const dueQueries: any[] = [];
+    const dueUpdates: any[] = [];
+    const paymentDate = new Date("2026-06-15");
+
+    const mockPrisma = {
+      $transaction: async (callback: any) => callback(mockPrisma),
+      interestDue: {
+        findMany: async (args: any) => {
+          dueQueries.push(args);
+          return [
+            {
+              id: "overdue-due",
+              dueDate: new Date("2026-06-05"),
+              dueAmount: 3000,
+              paidAmount: 0,
+              waivedAmount: 0,
+              status: DueStatus.OVERDUE,
+            },
+          ];
+        },
+        update: async (args: any) => {
+          dueUpdates.push(args);
+          return args.data;
+        },
+      },
+      payment: {
+        create: async (args: any) => ({ id: "payment-overdue", receiptNumber: "RCT-20260615-1002", ...args.data }),
+      },
+      paymentAllocation: {
+        create: async (args: any) => args.data,
+      },
+      auditLog: {
+        create: async (args: any) => args.data,
+      },
+    };
+
+    const { recordPayment } = loadPaymentEngine(mockPrisma, {
+      regenerateFutureDues: async () => undefined,
+      stopDueGeneration: async () => undefined,
+    });
+
+    const result = await recordPayment(
+      {
+        loanId: "loan-overdue",
+        amount: 1000,
+        paymentDate,
+        paymentMethod: PaymentMethod.UPI,
+      },
+      "user-1"
+    );
+
+    assert.deepEqual(dueQueries[0].where.dueDate, { lte: paymentDate });
+    assert.equal(result.allocated, 1000);
+    assert.equal(dueUpdates[0].data.paidAmount, 1000);
+    assert.equal(dueUpdates[0].data.status, DueStatus.PARTIAL);
+  });
+
+  it("does not allocate payments to future dues before they become collectible", async () => {
+    const allocations: any[] = [];
+    const paymentDate = new Date("2026-06-20");
+
+    const mockPrisma = {
+      $transaction: async (callback: any) => callback(mockPrisma),
+      interestDue: {
+        findMany: async (args: any) => {
+          assert.deepEqual(args.where.dueDate, { lte: paymentDate });
+          return [];
+        },
+        update: async () => {
+          throw new Error("Future due should not be updated");
+        },
+      },
+      payment: {
+        create: async (args: any) => ({ id: "payment-future", receiptNumber: "RCT-20260620-1003", ...args.data }),
+      },
+      paymentAllocation: {
+        create: async (args: any) => {
+          allocations.push(args);
+          return args.data;
+        },
+      },
+      auditLog: {
+        create: async (args: any) => args.data,
+      },
+    };
+
+    const { recordPayment } = loadPaymentEngine(mockPrisma, {
+      regenerateFutureDues: async () => undefined,
+      stopDueGeneration: async () => undefined,
+    });
+
+    const result = await recordPayment(
+      {
+        loanId: "loan-future",
+        amount: 3000,
+        paymentDate,
+        paymentMethod: PaymentMethod.CASH,
+      },
+      "user-1"
+    );
+
+    assert.equal(result.allocated, 0);
+    assert.equal(result.unallocated, 3000);
+    assert.equal(allocations.length, 0);
+  });
+
+  it("returns a payment receipt WhatsApp link after recording payment", async () => {
+    const revalidated: string[] = [];
+    let loanFindCount = 0;
+
+    const mockPrisma = {
+      loan: {
+        findFirst: async () => {
+          loanFindCount++;
+          if (loanFindCount === 1) return { id: "loan-receipt", borrowerId: "borrower-receipt" };
+          return {
+            id: "loan-receipt",
+            loanNumber: "LN-2026-7007",
+            principalAmount: 100000,
+            currentPrincipal: 100000,
+            borrower: {
+              id: "borrower-receipt",
+              fullName: "Gurjot Singh",
+              mobile: "9876543210",
+            },
+            interestDues: [
+              {
+                dueAmount: 3000,
+                paidAmount: 3000,
+                waivedAmount: 0,
+                status: DueStatus.PAID,
+                penaltyAmount: 0,
+                dueDate: new Date("2026-07-15"),
+              },
+            ],
+          };
+        },
+      },
+      settings: {
+        findUnique: async () => ({
+          value:
+            "Dear {{borrowerName}}\n{{allocationDetails}}\nReceipt {{receiptNumber}} {{paymentDate}} {{amount}} {{paymentMethod}} {{loanNumber}} Remaining {{remainingBalance}}",
+        }),
+      },
+    };
+
+    const { recordPaymentAction } = loadPaymentActions(mockPrisma, {
+      recordPayment: async () => ({
+        paymentId: "payment-receipt",
+        receiptNumber: "RCT-20260715-7007",
+        allocated: 3000,
+        unallocated: 0,
+        allocationDetails: [
+          {
+            dueId: "due-july",
+            dueDate: new Date("2026-07-15"),
+            periodStart: new Date("2026-06-15"),
+            periodEnd: new Date("2026-07-15"),
+            amountAllocated: 3000,
+            remainingForDue: 0,
+          },
+        ],
+      }),
+      revalidatePath: (path: string) => revalidated.push(path),
+    });
+
+    const result = await recordPaymentAction({
+      loanId: "loan-receipt",
+      amount: 3000,
+      paymentDate: new Date("2026-07-15"),
+      paymentMethod: PaymentMethod.CASH,
+    });
+
+    assert.equal(result.paymentId, "payment-receipt");
+    assert.ok(result.receiptWhatsappLink);
+    const url = new URL(result.receiptWhatsappLink);
+    assert.equal(url.pathname, "/919876543210");
+    assert.equal(
+      url.searchParams.get("text"),
+      "Dear Gurjot Singh\nInterest Period: July 2026\nDue Date: 15 Jul 2026\nAmount Allocated: \u20b93,000\nReceipt RCT-20260715-7007 15 Jul 2026 \u20b93,000 CASH LN-2026-7007 Remaining \u20b90"
+    );
+    assert.ok(revalidated.includes("/collections"));
+    assert.ok(revalidated.includes("/dashboard"));
+    assert.ok(revalidated.includes("/borrowers/borrower-receipt"));
   });
 });

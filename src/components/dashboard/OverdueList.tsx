@@ -1,15 +1,20 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Phone, MessageCircle, AlertTriangle } from "lucide-react";
 import { formatCurrency } from "@/utils";
 import type { OverdueAccount } from "@/types";
 import Link from "next/link";
+import { PaymentModal } from "@/components/payments/PaymentModal";
 
 interface Props {
   accounts: OverdueAccount[];
 }
 
 export function OverdueList({ accounts }: Props) {
+  const router = useRouter();
+  const [selectedAccount, setSelectedAccount] = useState<OverdueAccount | null>(null);
   const totalOverdue = accounts.reduce((s, a) => s + a.totalOverdue, 0);
 
   return (
@@ -54,28 +59,49 @@ export function OverdueList({ accounts }: Props) {
                   </div>
                 </div>
 
-                <div className="flex gap-2 flex-shrink-0">
-                  <a
-                    href={`tel:${account.mobile}`}
-                    className="flex items-center justify-center w-9 h-9 rounded-lg border border-red-200 text-red-600 hover:bg-red-100 transition-colors"
-                    title="Call"
+                <div className="flex flex-col gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => setSelectedAccount(account)}
+                    className="btn-primary text-xs px-3 py-2"
                   >
-                    <Phone className="w-4 h-4" />
-                  </a>
-                  <a
-                    href={account.whatsappLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 transition-colors"
-                    title="WhatsApp"
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                  </a>
+                    Receive
+                  </button>
+                  <div className="flex gap-2">
+                    <a
+                      href={`tel:${account.mobile}`}
+                      className="flex items-center justify-center w-9 h-9 rounded-lg border border-red-200 text-red-600 hover:bg-red-100 transition-colors"
+                      title="Call"
+                    >
+                      <Phone className="w-4 h-4" />
+                    </a>
+                    <a
+                      href={account.whatsappLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 transition-colors"
+                      title="WhatsApp"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                    </a>
+                  </div>
                 </div>
               </div>
             </div>
         ))}
       </div>
+
+      {selectedAccount && (
+        <PaymentModal
+          loanId={selectedAccount.loanId}
+          defaultAmount={selectedAccount.totalOverdue}
+          borrowerName={selectedAccount.borrowerName}
+          loanNumber={selectedAccount.loanNumber}
+          onClose={() => {
+            setSelectedAccount(null);
+            router.refresh();
+          }}
+        />
+      )}
     </section>
   );
 }

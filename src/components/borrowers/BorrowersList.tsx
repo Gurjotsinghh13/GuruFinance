@@ -17,7 +17,7 @@ interface BorrowerData {
     id: string;
     status: string;
     currentPrincipal: any;
-    interestDues: { dueAmount: any; paidAmount: any; waivedAmount: any; status: string }[];
+    interestDues: { dueAmount: any; paidAmount: any; waivedAmount: any; status: string; dueDate?: Date | string }[];
   }[];
   _count: { loans: number };
 }

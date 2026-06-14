@@ -7,6 +7,7 @@ import { serializeDecimal } from "@/utils";
 
 export default async function ReportsPage() {
   const session = await requireAuth();
+  const today = new Date();
 
   const months = Array.from({ length: 6 }, (_, i) => {
     const d = subMonths(new Date(), i);
@@ -17,10 +18,11 @@ export default async function ReportsPage() {
     months.map(async ({ key, label, date }) => {
       const start = startOfMonth(date);
       const end = endOfMonth(date);
+      const reportEnd = end > today ? today : end;
 
       const dues = await prisma.interestDue.findMany({
         where: {
-          dueDate: { gte: start, lte: end },
+          dueDate: { gte: start, lte: reportEnd },
           loan: { borrower: { userId: session.id } },
         },
         select: {
@@ -63,30 +65,38 @@ export default async function ReportsPage() {
       interestDues: {
         where: {
           status: { in: [DueStatus.PENDING, DueStatus.PARTIAL, DueStatus.OVERDUE] },
+          dueDate: { lte: today },
         },
         select: {
           dueAmount: true,
           paidAmount: true,
           waivedAmount: true,
           status: true,
+          dueDate: true,
         },
       },
     },
   });
 
-  const overdueTotal = await prisma.interestDue.aggregate({
+  const overdueDues = await prisma.interestDue.findMany({
     where: {
-      status: DueStatus.OVERDUE,
+      status: { in: [DueStatus.PENDING, DueStatus.PARTIAL, DueStatus.OVERDUE] },
+      dueDate: { lt: today },
       loan: { borrower: { userId: session.id } },
     },
-    _sum: { dueAmount: true },
+    select: { dueAmount: true, paidAmount: true, waivedAmount: true },
   });
+  const overdueTotal = overdueDues.reduce(
+    (sum, due) =>
+      sum + Math.max(0, Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount)),
+    0
+  );
 
   return (
     <ReportsClient
       monthlyData={monthlyData}
       activeLoansSummary={serializeDecimal(activeLoansSummary)}
-      overdueTotal={Number(overdueTotal._sum.dueAmount || 0)}
+      overdueTotal={overdueTotal}
     />
   );
 }

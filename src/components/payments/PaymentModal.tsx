@@ -72,6 +72,10 @@ export function PaymentModal({
         setError(result.error);
       } else {
         setSuccess(true);
+        router.refresh();
+        if (result.receiptWhatsappLink) {
+          window.open(result.receiptWhatsappLink, "_blank", "noopener,noreferrer");
+        }
         setTimeout(() => {
           onClose();
           router.refresh();

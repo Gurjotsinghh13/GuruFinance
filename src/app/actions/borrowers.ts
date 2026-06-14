@@ -173,6 +173,7 @@ export async function getBorrowersAction(params?: {
   pageSize?: number;
 }) {
   const session = await requireAuth();
+  const today = new Date();
 
   const { search, includeArchived = false, page = 1, pageSize = 20 } = params || {};
 
@@ -201,8 +202,11 @@ export async function getBorrowersAction(params?: {
             status: true,
             currentPrincipal: true,
             interestDues: {
-              where: { status: { in: ["PENDING", "PARTIAL", "OVERDUE"] } },
-              select: { dueAmount: true, paidAmount: true, waivedAmount: true, status: true },
+              where: {
+                status: { in: ["PENDING", "PARTIAL", "OVERDUE"] },
+                dueDate: { lte: today },
+              },
+              select: { dueAmount: true, paidAmount: true, waivedAmount: true, status: true, dueDate: true },
             },
           },
         },

@@ -35,6 +35,7 @@ export default async function BorrowerDetailPage({ params }: Props) {
       waivedAmount: Number(d.waivedAmount),
       status: d.status,
       penaltyAmount: Number(d.penaltyAmount),
+      dueDate: d.dueDate,
     })),
   });
 

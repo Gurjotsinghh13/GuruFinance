@@ -11,7 +11,8 @@ import { recordPayment } from "@/features/payment-engine";
 import type { RecordPaymentInput, DashboardStats, TodayCollection, OverdueAccount } from "@/types";
 import { startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns";
 import { DueStatus, LoanStatus } from "@prisma/client";
-import { buildBalanceReminderLink, buildDueReminderLink } from "@/features/whatsapp";
+import { buildBalanceReminderLink, buildDueReminderLink, buildPaymentReceiptLink } from "@/features/whatsapp";
+import { calculateLoanSummary } from "@/features/interest-engine";
 
 // ============================================================
 // RECORD PAYMENT
@@ -20,6 +21,8 @@ import { buildBalanceReminderLink, buildDueReminderLink } from "@/features/whats
 export async function recordPaymentAction(input: RecordPaymentInput): Promise<{
   error?: string;
   paymentId?: string;
+  receiptNumber?: string;
+  receiptWhatsappLink?: string;
   allocated?: number;
   unallocated?: number;
 }> {
@@ -31,16 +34,57 @@ export async function recordPaymentAction(input: RecordPaymentInput): Promise<{
         id: input.loanId,
         borrower: { userId: session.id },
       },
-      select: { id: true },
+      select: { id: true, borrowerId: true },
     });
 
     if (!loan) return { error: "Loan not found" };
 
     const result = await recordPayment(input, session.id);
+    const updatedLoan = await prisma.loan.findFirst({
+      where: {
+        id: input.loanId,
+        borrower: { userId: session.id },
+      },
+      include: {
+        borrower: { select: { id: true, fullName: true, mobile: true } },
+        interestDues: true,
+      },
+    });
+    let receiptWhatsappLink: string | undefined;
+
+    if (updatedLoan) {
+      const summary = calculateLoanSummary({
+        originalPrincipal: Number(updatedLoan.principalAmount),
+        currentPrincipal: Number(updatedLoan.currentPrincipal),
+        asOfDate: input.paymentDate,
+        dues: updatedLoan.interestDues.map((due) => ({
+          dueAmount: Number(due.dueAmount),
+          paidAmount: Number(due.paidAmount),
+          waivedAmount: Number(due.waivedAmount),
+          status: due.status,
+          penaltyAmount: Number(due.penaltyAmount),
+          dueDate: due.dueDate,
+        })),
+      });
+      receiptWhatsappLink = await buildPaymentReceiptLink({
+        phone: updatedLoan.borrower.mobile,
+        borrowerName: updatedLoan.borrower.fullName,
+        amount: input.amount,
+        paymentDate: input.paymentDate,
+        paymentMethod: input.paymentMethod,
+        loanNumber: updatedLoan.loanNumber,
+        receiptNumber: result.receiptNumber,
+        remainingBalance: summary.pendingInterest + summary.overdueInterest,
+        allocationDetails: result.allocationDetails,
+      });
+    }
+
     revalidatePath(`/loans/${input.loanId}`);
+    revalidatePath(`/borrowers/${loan.borrowerId}`);
     revalidatePath("/dashboard");
     revalidatePath("/collections");
-    return result;
+    revalidatePath("/reports");
+    return { ...result, receiptWhatsappLink };
   } catch (err: any) {
     return { error: err.message || "Failed to record payment" };
   }
@@ -113,7 +157,8 @@ export async function getOverdueAccountsAction(): Promise<OverdueAccount[]> {
 
   const overdueDues = await prisma.interestDue.findMany({
     where: {
-      status: DueStatus.OVERDUE,
+      status: { in: [DueStatus.PENDING, DueStatus.PARTIAL, DueStatus.OVERDUE] },
+      dueDate: { lt: startOfDay(new Date()) },
       loan: {
         status: LoanStatus.ACTIVE,
         borrower: { userId: session.id, isArchived: false },
@@ -136,8 +181,12 @@ export async function getOverdueAccountsAction(): Promise<OverdueAccount[]> {
   >();
 
   for (const due of overdueDues) {
-    const key = due.loan.borrowerId;
+    const key = due.loanId;
     const outstanding = Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount);
+    const daysOverdue = Math.max(
+      due.daysOverdue,
+      Math.floor((startOfDay(new Date()).getTime() - startOfDay(due.dueDate).getTime()) / (1000 * 60 * 60 * 24))
+    );
 
     if (byBorrower.has(key)) {
       const existing = byBorrower.get(key)!;
@@ -147,8 +196,8 @@ export async function getOverdueAccountsAction(): Promise<OverdueAccount[]> {
         existing.loanIds.add(due.loanId);
       }
       existing.overdueCount += 1;
-      if (due.daysOverdue > existing.daysOverdue) {
-        existing.daysOverdue = due.daysOverdue;
+      if (daysOverdue > existing.daysOverdue) {
+        existing.daysOverdue = daysOverdue;
       }
     } else {
       byBorrower.set(key, {
@@ -158,7 +207,7 @@ export async function getOverdueAccountsAction(): Promise<OverdueAccount[]> {
         loanId: due.loanId,
         loanNumber: due.loan.loanNumber,
         totalOverdue: outstanding,
-        daysOverdue: due.daysOverdue,
+        daysOverdue,
         overdueCount: 1,
         principalOutstanding: Number(due.loan.currentPrincipal),
         loanIds: new Set([due.loanId]),
@@ -174,7 +223,7 @@ export async function getOverdueAccountsAction(): Promise<OverdueAccount[]> {
       whatsappLink: await buildBalanceReminderLink({
         phone: account.mobile,
         borrowerName: account.borrowerName,
-        loanNumber: account.overdueCount > 1 ? `${account.loanNumber} and other dues` : account.loanNumber,
+        loanNumber: account.loanNumber,
         principal: principalOutstanding,
         pendingInterest: account.totalOverdue,
         totalOutstanding: principalOutstanding + account.totalOverdue,
@@ -190,6 +239,7 @@ export async function getOverdueAccountsAction(): Promise<OverdueAccount[]> {
 export async function getDashboardStatsAction(): Promise<DashboardStats> {
   const session = await requireAuth();
   const now = new Date();
+  const todayStart = startOfDay(now);
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
 
@@ -221,7 +271,7 @@ export async function getDashboardStatsAction(): Promise<DashboardStats> {
     }),
     prisma.interestDue.findMany({
       where: {
-        dueDate: { gte: monthStart, lte: monthEnd },
+        dueDate: { gte: monthStart, lte: todayStart },
         loan: { status: LoanStatus.ACTIVE, borrower: { userId: session.id } },
       },
       select: { dueAmount: true, paidAmount: true, waivedAmount: true, status: true },
@@ -236,13 +286,15 @@ export async function getDashboardStatsAction(): Promise<DashboardStats> {
     prisma.interestDue.findMany({
       where: {
         status: { in: [DueStatus.PENDING, DueStatus.PARTIAL] },
+        dueDate: { lte: todayStart },
         loan: { status: LoanStatus.ACTIVE, borrower: { userId: session.id } },
       },
       select: { dueAmount: true, paidAmount: true, waivedAmount: true },
     }),
     prisma.interestDue.findMany({
       where: {
-        status: DueStatus.OVERDUE,
+        status: { in: [DueStatus.PENDING, DueStatus.PARTIAL, DueStatus.OVERDUE] },
+        dueDate: { lt: todayStart },
         loan: { status: LoanStatus.ACTIVE, borrower: { userId: session.id } },
       },
       select: { dueAmount: true, paidAmount: true, waivedAmount: true },
@@ -298,10 +350,12 @@ export async function getMonthlyReportAction(month: string) {
   const [year, mon] = month.split("-").map(Number);
   const start = new Date(year, mon - 1, 1);
   const end = endOfMonth(start);
+  const today = new Date();
+  const reportEnd = end > today ? today : end;
 
   const dues = await prisma.interestDue.findMany({
     where: {
-      dueDate: { gte: start, lte: end },
+      dueDate: { gte: start, lte: reportEnd },
       loan: { borrower: { userId: session.id } },
     },
     include: {

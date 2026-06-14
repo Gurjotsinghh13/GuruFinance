@@ -21,7 +21,7 @@ interface DueItem {
     loanNumber: string;
     borrower: { id: string; fullName: string; mobile: string };
   };
-  whatsappLink: string;
+  whatsappLink?: string;
 }
 
 interface Props {
@@ -32,7 +32,7 @@ interface Props {
 
 const VIEWS = [
   { value: "today", label: "Today" },
-  { value: "week", label: "Next 7 Days" },
+  { value: "upcoming", label: "Upcoming" },
   { value: "overdue", label: "Overdue" },
 ];
 
@@ -91,6 +91,10 @@ export function CollectionsClient({ dues, totalExpected, activeView }: Props) {
         {dues.map((due) => {
           const outstanding =
             Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount);
+          const dueDate = new Date(due.dueDate);
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+          const isUpcoming = dueDate.getTime() > todayStart.getTime();
 
           return (
             <div
@@ -135,12 +139,14 @@ export function CollectionsClient({ dues, totalExpected, activeView }: Props) {
                 </div>
 
                 <div className="flex flex-col gap-2 flex-shrink-0">
-                  <button
-                    onClick={() => setSelectedDue(due)}
-                    className="btn-primary text-xs px-3 py-2"
-                  >
-                    Receive
-                  </button>
+                  {!isUpcoming && due.status !== DueStatus.PAID && (
+                    <button
+                      onClick={() => setSelectedDue(due)}
+                      className="btn-primary text-xs px-3 py-2"
+                    >
+                      Receive
+                    </button>
+                  )}
                   <div className="flex gap-1.5">
                     <a
                       href={`tel:${due.loan.borrower.mobile}`}
@@ -148,14 +154,16 @@ export function CollectionsClient({ dues, totalExpected, activeView }: Props) {
                     >
                       <Phone className="w-3.5 h-3.5" />
                     </a>
-                    <a
-                      href={due.whatsappLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 transition-colors"
-                    >
-                      <MessageCircle className="w-3.5 h-3.5" />
-                    </a>
+                    {due.whatsappLink && (
+                      <a
+                        href={due.whatsappLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 transition-colors"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                      </a>
+                    )}
                   </div>
                 </div>
               </div>

@@ -13,15 +13,17 @@ interface Props {
 export default async function CollectionsPage({ searchParams }: Props) {
   const session = await requireAuth();
   const params = await searchParams;
-  const view = params.view || "today";
+  const view = params.view === "week" ? "upcoming" : params.view || "today";
 
   const today = new Date();
+  const todayStart = startOfDay(today);
+  const todayEnd = endOfDay(today);
   let dateFilter: { gte: Date; lte: Date } | undefined;
 
   if (view === "today") {
-    dateFilter = { gte: startOfDay(today), lte: endOfDay(today) };
-  } else if (view === "week") {
-    dateFilter = { gte: startOfDay(today), lte: endOfDay(addDays(today, 7)) };
+    dateFilter = { gte: todayStart, lte: todayEnd };
+  } else if (view === "upcoming") {
+    dateFilter = { gte: endOfDay(today), lte: endOfDay(addDays(today, 7)) };
   } else if (view === "overdue") {
     dateFilter = { gte: new Date("2000-01-01"), lte: endOfDay(subDays(today, 1)) };
   }
@@ -29,7 +31,10 @@ export default async function CollectionsPage({ searchParams }: Props) {
   const dues = await prisma.interestDue.findMany({
     where: {
       ...(view === "overdue"
-        ? { status: DueStatus.OVERDUE }
+        ? {
+            status: { in: [DueStatus.PENDING, DueStatus.PARTIAL, DueStatus.OVERDUE] },
+            dueDate: { lt: todayStart },
+          }
         : { status: { in: [DueStatus.PENDING, DueStatus.PARTIAL, DueStatus.OVERDUE] } }),
       ...(dateFilter && view !== "overdue" ? { dueDate: dateFilter } : {}),
       loan: {
@@ -58,13 +63,16 @@ export default async function CollectionsPage({ searchParams }: Props) {
 
       return {
         ...due,
-        whatsappLink: await buildDueReminderLink({
-          phone: due.loan.borrower.mobile,
-          borrowerName: due.loan.borrower.fullName,
-          amount: remainingAmount,
-          dueDate: due.dueDate,
-          loanNumber: due.loan.loanNumber,
-        }),
+        whatsappLink:
+          due.dueDate <= todayStart
+            ? await buildDueReminderLink({
+                phone: due.loan.borrower.mobile,
+                borrowerName: due.loan.borrower.fullName,
+                amount: remainingAmount,
+                dueDate: due.dueDate,
+                loanNumber: due.loan.loanNumber,
+              })
+            : undefined,
       };
     })
   );

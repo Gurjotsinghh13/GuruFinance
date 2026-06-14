@@ -25,8 +25,25 @@ export function LoanCard({ loan, summary }: Props) {
 
   const isActive = loan.status === LoanStatus.ACTIVE;
   const isClosed = loan.status === LoanStatus.CLOSED;
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const collectibleStatuses: DueStatus[] = [
+    DueStatus.PENDING,
+    DueStatus.PARTIAL,
+    DueStatus.OVERDUE,
+  ];
 
-  const recentDues = [...loan.interestDues]
+  const currentDues = loan.interestDues.filter(
+    (due) => due.status === DueStatus.PAID || new Date(due.dueDate).getTime() <= todayStart.getTime()
+  );
+  const upcomingDues = loan.interestDues
+    .filter(
+      (due) =>
+        collectibleStatuses.includes(due.status) &&
+        new Date(due.dueDate).getTime() > todayStart.getTime()
+    )
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+  const recentDues = [...currentDues]
     .sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime())
     .slice(0, 6);
 
@@ -130,10 +147,23 @@ export function LoanCard({ loan, summary }: Props) {
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">
             Recent Interest Dues
           </p>
-          {recentDues.length === 0 ? (
+          {recentDues.length === 0 && upcomingDues.length === 0 ? (
             <p className="text-sm text-gray-400">No dues generated yet</p>
           ) : (
             <div className="space-y-2">
+              {upcomingDues.length > 0 && (
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2.5">
+                  <p className="text-xs font-medium text-blue-700 mb-1.5">Upcoming Dues</p>
+                  {upcomingDues.slice(0, 2).map((due) => (
+                    <div key={due.id} className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">{formatDate(due.dueDate)}</span>
+                      <span className="font-semibold tabular-nums">
+                        {formatCurrency(Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {recentDues.map((due) => {
                 const outstanding =
                   Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount);

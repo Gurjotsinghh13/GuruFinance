@@ -26,7 +26,7 @@ const TEMPLATE_LABELS: Record<string, string> = {
 const TEMPLATE_VARS: Record<string, string[]> = {
   DUE_REMINDER: ["{{borrowerName}}", "{{amount}}", "{{dueDate}}", "{{loanNumber}}"],
   BALANCE_REMINDER: ["{{borrowerName}}", "{{loanNumber}}", "{{principal}}", "{{pendingInterest}}", "{{totalOutstanding}}"],
-  PAYMENT_RECEIPT: ["{{borrowerName}}", "{{amount}}", "{{paymentDate}}", "{{paymentMethod}}", "{{loanNumber}}", "{{receiptNumber}}", "{{remainingBalance}}"],
+  PAYMENT_RECEIPT: ["{{borrowerName}}", "{{allocationDetails}}", "{{amount}}", "{{paymentDate}}", "{{paymentMethod}}", "{{loanNumber}}", "{{receiptNumber}}", "{{remainingBalance}}"],
   ACCOUNT_STATEMENT: ["{{borrowerName}}", "{{loanNumber}}", "{{principal}}", "{{interestRate}}", "{{totalPaid}}", "{{pendingInterest}}", "{{outstandingPrincipal}}"],
 };
 

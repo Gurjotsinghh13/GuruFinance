@@ -48,11 +48,23 @@ export function LoanDetailClient({ loan, summary, balanceWhatsappLink }: Props) 
   const [error, setError] = useState<string | null>(null);
 
   const isActive = loan.status === LoanStatus.ACTIVE;
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
 
-  const pendingDues = loan.interestDues.filter((d) =>
-    COLLECTIBLE_DUE_STATUSES.includes(d.status)
+  const collectibleDues = loan.interestDues.filter((d) =>
+    COLLECTIBLE_DUE_STATUSES.includes(d.status) &&
+    new Date(d.dueDate).getTime() <= todayStart.getTime()
   );
-  const nextDue = pendingDues.sort(
+  const upcomingDues = loan.interestDues
+    .filter((d) =>
+      COLLECTIBLE_DUE_STATUSES.includes(d.status) &&
+      new Date(d.dueDate).getTime() > todayStart.getTime()
+    )
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+  const ledgerDues = loan.interestDues.filter(
+    (d) => d.status === DueStatus.PAID || new Date(d.dueDate).getTime() <= todayStart.getTime()
+  );
+  const nextDue = collectibleDues.sort(
     (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
   )[0];
 
@@ -207,6 +219,22 @@ export function LoanDetailClient({ loan, summary, balanceWhatsappLink }: Props) 
           </div>
         )}
 
+        {upcomingDues.length > 0 && isActive && (
+          <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
+            <p className="text-xs font-medium text-blue-700 mb-2">Upcoming Dues</p>
+            <div className="space-y-1.5">
+              {upcomingDues.slice(0, 3).map((due) => (
+                <div key={due.id} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-700">{formatDate(due.dueDate)}</span>
+                  <span className="font-semibold tabular-nums text-gray-900">
+                    {formatCurrency(Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Collateral */}
         {loan.collateral && (
           <div className="mt-3 pt-3 border-t border-gray-100">
@@ -237,10 +265,10 @@ export function LoanDetailClient({ loan, summary, balanceWhatsappLink }: Props) 
           {/* DUES TAB */}
           {activeTab === "dues" && (
             <div className="space-y-2">
-              {loan.interestDues.length === 0 ? (
+              {ledgerDues.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-4">No dues generated yet</p>
               ) : (
-                [...loan.interestDues]
+                [...ledgerDues]
                   .sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime())
                   .map((due) => {
                     const outstanding = Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount);

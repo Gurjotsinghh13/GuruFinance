@@ -45,6 +45,7 @@ export default async function LoanDetailPage({ params }: Props) {
       waivedAmount: Number(d.waivedAmount),
       status: d.status,
       penaltyAmount: Number(d.penaltyAmount),
+      dueDate: d.dueDate,
     })),
   });
   const balanceWhatsappLink = await buildBalanceReminderLink({
