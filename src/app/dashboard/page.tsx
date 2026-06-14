@@ -1,8 +1,5 @@
 import {
-  getDashboardStatsAction,
-  getTodayCollectionsAction,
-  getOverdueAccountsAction,
-  getCollectedTodayPaymentsAction,
+  getDashboardDataAction,
 } from "@/app/actions/payments";
 import { DashboardStats } from "@/components/dashboard/DashboardStats";
 import { TodayCollectionList } from "@/components/dashboard/TodayCollectionList";
@@ -12,12 +9,8 @@ import { CollectedTodayList } from "@/components/dashboard/CollectedTodayList";
 import { format } from "date-fns";
 
 export default async function DashboardPage() {
-  const [stats, todayCollections, overdueAccounts, collectedToday] = await Promise.all([
-    getDashboardStatsAction(),
-    getTodayCollectionsAction(),
-    getOverdueAccountsAction(),
-    getCollectedTodayPaymentsAction(),
-  ]);
+  const { stats, todayCollections, overdueAccounts, collectedToday } =
+    await getDashboardDataAction();
 
   const hour = new Date().getHours();
   const greeting =

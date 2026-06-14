@@ -399,6 +399,34 @@ describe("WhatsApp template rendering", () => {
       "Reminder for Gurjot Singh\nAmount: \u20b92,250\nDue: 01 Jul 2026\nLoan: LN-2026-5005"
     );
   });
+
+  it("reuses a preloaded template without changing WhatsApp link output", async () => {
+    const template =
+      "Reminder for {{borrowerName}}\nAmount: {{amount}}\nDue: {{dueDate}}\nLoan: {{loanNumber}}";
+    let templateLookups = 0;
+    const { buildDueReminderLink } = loadWhatsAppFeature({
+      settings: {
+        findUnique: async () => {
+          templateLookups += 1;
+          return { value: template };
+        },
+      },
+    });
+
+    const params = {
+      phone: "98765 43210",
+      borrowerName: "Gurjot Singh",
+      amount: 2250,
+      dueDate: new Date("2026-07-01"),
+      loanNumber: "LN-2026-5005",
+    };
+
+    const linkFromSettings = await buildDueReminderLink(params);
+    const linkFromPreloadedTemplate = await buildDueReminderLink(params, template);
+
+    assert.equal(linkFromPreloadedTemplate, linkFromSettings);
+    assert.equal(templateLookups, 1);
+  });
 });
 
 describe("financial calculations", () => {
@@ -1220,6 +1248,154 @@ describe("dashboard statistics", () => {
     assert.ok(overdueQuery.where.dueDate.lt instanceof Date);
     assert.equal(stats.pendingInterest, 2000);
     assert.equal(stats.overdueInterest, 2000);
+  });
+
+  it("loads optimized dashboard data from shared due and payment queries without changing output shape", async () => {
+    const queryCounts = {
+      loanFindMany: 0,
+      loanCount: 0,
+      borrowerCount: 0,
+      dueFindMany: 0,
+      paymentFindMany: 0,
+      settingsFindUnique: 0,
+    };
+    const today = startOfDay(new Date());
+    const visibleTodayDue = {
+      id: "due-today",
+      loanId: "loan-1",
+      dueDate: today,
+      dueAmount: 3000,
+      paidAmount: 1000,
+      waivedAmount: 0,
+      status: DueStatus.PARTIAL,
+      daysOverdue: 0,
+      loan: {
+        id: "loan-1",
+        loanNumber: "LN-2026-1001",
+        currentPrincipal: 100000,
+        borrower: { id: "borrower-1", fullName: "Rahul Sharma", mobile: "9876543210", isArchived: false },
+      },
+    };
+    const visibleOverdueDue = {
+      id: "due-overdue",
+      loanId: "loan-1",
+      dueDate: subDays(today, 10),
+      dueAmount: 3000,
+      paidAmount: 0,
+      waivedAmount: 0,
+      status: DueStatus.OVERDUE,
+      daysOverdue: 10,
+      loan: visibleTodayDue.loan,
+    };
+    const archivedOverdueDue = {
+      id: "due-archived",
+      loanId: "loan-2",
+      dueDate: subDays(today, 5),
+      dueAmount: 2000,
+      paidAmount: 0,
+      waivedAmount: 0,
+      status: DueStatus.OVERDUE,
+      daysOverdue: 5,
+      loan: {
+        id: "loan-2",
+        loanNumber: "LN-2026-2002",
+        currentPrincipal: 50000,
+        borrower: { id: "borrower-2", fullName: "Archived Borrower", mobile: "9876500000", isArchived: true },
+      },
+    };
+
+    const mockPrisma = {
+      loan: {
+        findMany: async () => {
+          queryCounts.loanFindMany += 1;
+          return [
+            { currentPrincipal: 100000, interestRate: 3, loanFrequency: LoanFrequency.MONTHLY },
+            { currentPrincipal: 50000, interestRate: 2, loanFrequency: LoanFrequency.MONTHLY },
+          ];
+        },
+        count: async () => {
+          queryCounts.loanCount += 1;
+          return 1;
+        },
+      },
+      borrower: {
+        count: async () => {
+          queryCounts.borrowerCount += 1;
+          return 1;
+        },
+      },
+      interestDue: {
+        findMany: async (args: any) => {
+          queryCounts.dueFindMany += 1;
+          if (args.where.status) {
+            return [visibleTodayDue, visibleOverdueDue, archivedOverdueDue];
+          }
+          return [
+            { dueAmount: 3000, paidAmount: 1000, waivedAmount: 0, status: DueStatus.PARTIAL },
+            { dueAmount: 3000, paidAmount: 0, waivedAmount: 0, status: DueStatus.OVERDUE },
+          ];
+        },
+      },
+      payment: {
+        findMany: async () => {
+          queryCounts.paymentFindMany += 1;
+          return [
+            {
+              id: "payment-1",
+              amount: 1000,
+              paymentDate: today,
+              createdAt: today,
+              loan: {
+                loanNumber: "LN-2026-1001",
+                borrower: { fullName: "Rahul Sharma", isArchived: false },
+              },
+            },
+            {
+              id: "payment-archived",
+              amount: 500,
+              paymentDate: today,
+              createdAt: today,
+              loan: {
+                loanNumber: "LN-2026-2002",
+                borrower: { fullName: "Archived Borrower", isArchived: true },
+              },
+            },
+          ];
+        },
+      },
+      settings: {
+        findUnique: async () => {
+          queryCounts.settingsFindUnique += 1;
+          return null;
+        },
+      },
+    };
+
+    const { getDashboardDataAction } = loadPaymentActions(mockPrisma);
+    const dashboard = await getDashboardDataAction();
+
+    assert.deepEqual(queryCounts, {
+      loanFindMany: 1,
+      loanCount: 1,
+      borrowerCount: 1,
+      dueFindMany: 2,
+      paymentFindMany: 1,
+      settingsFindUnique: 2,
+    });
+    assert.equal(dashboard.stats.totalPrincipalLent, 150000);
+    assert.equal(dashboard.stats.closedLoanCount, 1);
+    assert.equal(dashboard.stats.activeBorrowerCount, 1);
+    assert.equal(dashboard.stats.monthlyExpectedInterest, 6000);
+    assert.equal(dashboard.stats.interestReceivedThisMonth, 1500);
+    assert.equal(dashboard.stats.pendingInterest, 2000);
+    assert.equal(dashboard.stats.overdueInterest, 5000);
+    assert.equal(dashboard.stats.overdueCount, 2);
+    assert.equal(dashboard.todayCollections.length, 1);
+    assert.equal(dashboard.todayCollections[0].remainingAmount, 2000);
+    assert.equal(dashboard.overdueAccounts.length, 1);
+    assert.equal(dashboard.overdueAccounts[0].totalOverdue, 3000);
+    assert.equal(dashboard.collectedToday.length, 1);
+    assert.equal(dashboard.collectedToday[0].amount, 1000);
   });
 });
 

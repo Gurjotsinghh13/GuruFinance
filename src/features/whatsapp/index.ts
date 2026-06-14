@@ -202,8 +202,8 @@ export async function buildDueReminderLink(params: {
   amount: number;
   dueDate: Date;
   loanNumber: string;
-}): Promise<string> {
-  const template = await getTemplate(MessageType.DUE_REMINDER);
+}, templateOverride?: string): Promise<string> {
+  const template = templateOverride ?? await getTemplate(MessageType.DUE_REMINDER);
   const message = renderDueReminderMessage(template, params);
   return createWhatsAppLink(params.phone, message);
 }
@@ -222,8 +222,8 @@ export async function buildPaymentReceiptLink(params: {
   receiptNumber: string;
   remainingBalance: number;
   allocationDetails?: PaymentAllocationDetail[];
-}): Promise<string> {
-  const template = await getTemplate(MessageType.PAYMENT_RECEIPT);
+}, templateOverride?: string): Promise<string> {
+  const template = templateOverride ?? await getTemplate(MessageType.PAYMENT_RECEIPT);
   const message = renderPaymentReceiptMessage(template, params);
   return createWhatsAppLink(params.phone, message);
 }
@@ -239,8 +239,8 @@ export async function buildBalanceReminderLink(params: {
   principal: number;
   pendingInterest: number;
   totalOutstanding: number;
-}): Promise<string> {
-  const template = await getTemplate(MessageType.BALANCE_REMINDER);
+}, templateOverride?: string): Promise<string> {
+  const template = templateOverride ?? await getTemplate(MessageType.BALANCE_REMINDER);
   const message = renderBalanceReminderMessage(template, params);
   return createWhatsAppLink(params.phone, message);
 }
@@ -258,8 +258,8 @@ export async function buildAccountStatementLink(params: {
   totalPaid: number;
   pendingInterest: number;
   outstandingPrincipal: number;
-}): Promise<string> {
-  const template = await getTemplate(MessageType.ACCOUNT_STATEMENT);
+}, templateOverride?: string): Promise<string> {
+  const template = templateOverride ?? await getTemplate(MessageType.ACCOUNT_STATEMENT);
   const message = renderAccountStatementMessage(template, params);
   return createWhatsAppLink(params.phone, message);
 }

@@ -1,10 +1,10 @@
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { DueStatus, LoanStatus } from "@prisma/client";
+import { DueStatus, LoanStatus, MessageType } from "@prisma/client";
 import { CollectionsClient } from "@/components/collections/CollectionsClient";
 import { startOfDay, endOfDay, addDays, subDays } from "date-fns";
 import { serializeDecimal } from "@/utils";
-import { buildDueReminderLink } from "@/features/whatsapp";
+import { buildDueReminderLink, getTemplate } from "@/features/whatsapp";
 
 interface Props {
   searchParams: Promise<{ view?: string; date?: string }>;
@@ -56,6 +56,9 @@ export default async function CollectionsPage({ searchParams }: Props) {
     (s, d) => s + Number(d.dueAmount) - Number(d.paidAmount) - Number(d.waivedAmount),
     0
   );
+  const dueTemplate = dues.some((due) => due.dueDate <= todayStart)
+    ? await getTemplate(MessageType.DUE_REMINDER)
+    : undefined;
   const duesWithLinks = await Promise.all(
     dues.map(async (due) => {
       const remainingAmount =
@@ -71,7 +74,7 @@ export default async function CollectionsPage({ searchParams }: Props) {
                 amount: remainingAmount,
                 dueDate: due.dueDate,
                 loanNumber: due.loan.loanNumber,
-              })
+              }, dueTemplate)
             : undefined,
       };
     })
