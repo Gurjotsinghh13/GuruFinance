@@ -1,5 +1,7 @@
 import type { SessionUser } from "@/types";
 import { GlobalSearch } from "./GlobalSearch";
+import { LogOut } from "lucide-react";
+import { logoutAction } from "@/app/actions/auth";
 
 export function TopBar({ user }: { user: SessionUser }) {
   return (
@@ -23,6 +25,16 @@ export function TopBar({ user }: { user: SessionUser }) {
         <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold text-sm">
           {user.name.charAt(0).toUpperCase()}
         </div>
+        <form action={logoutAction} className="lg:hidden">
+          <button
+            type="submit"
+            aria-label="Sign out"
+            title="Sign out"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </form>
       </div>
     </header>
   );
