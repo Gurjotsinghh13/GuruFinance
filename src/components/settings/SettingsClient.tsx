@@ -19,7 +19,7 @@ interface Props {
 const TEMPLATE_LABELS: Record<string, string> = {
   DUE_REMINDER: "Due Reminder",
   BALANCE_REMINDER: "Balance Reminder",
-  PAYMENT_RECEIPT: "Payment Receipt",
+  PAYMENT_RECEIPT: "Receipt Message",
   ACCOUNT_STATEMENT: "Account Statement",
 };
 

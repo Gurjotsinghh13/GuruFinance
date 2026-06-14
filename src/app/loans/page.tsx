@@ -98,7 +98,7 @@ export default async function LoansPage({ searchParams }: Props) {
                   </span>
                   {pendingAmount > 0 && (
                     <span className={`text-xs font-medium tabular-nums ${hasOverdue ? "text-red-600" : "text-amber-600"}`}>
-                      Due: {formatCurrency(pendingAmount)}
+                      Unpaid: {formatCurrency(pendingAmount)}
                     </span>
                   )}
                 </div>
@@ -113,7 +113,7 @@ export default async function LoansPage({ searchParams }: Props) {
                   {loan.status}
                 </p>
                 <p className="text-xs text-gray-400 mt-1">
-                  {loan._count.payments} payments
+                  {loan._count.payments} receipts
                 </p>
               </div>
             </Link>

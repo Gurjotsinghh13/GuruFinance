@@ -53,7 +53,48 @@ export async function recordPayment(
       dueDate: d.dueDate,
     }));
 
-    const allocationResult = allocatePayment(input.amount, duesForAllocation, input.paymentDate);
+    let allocationResult = allocatePayment(input.amount, duesForAllocation, input.paymentDate);
+
+    if (input.dueId) {
+      const targetDue = duesForAllocation.find((due) => due.id === input.dueId);
+      if (!targetDue) {
+        throw new Error("Selected due is not available for collection");
+      }
+
+      const targetOutstanding = roundCurrency(
+        targetDue.dueAmount - targetDue.paidAmount - targetDue.waivedAmount
+      );
+
+      if (targetOutstanding <= 0) {
+        throw new Error("Selected due is already paid");
+      }
+
+      const targetAmount = Math.min(input.amount, targetOutstanding);
+      const remainingAmount = roundCurrency(input.amount - targetAmount);
+      const duesAfterTarget = duesForAllocation.map((due) => {
+        if (due.id !== input.dueId) return due;
+
+        const paidAmount = roundCurrency(due.paidAmount + targetAmount);
+        return {
+          ...due,
+          paidAmount,
+          status: paidAmount + due.waivedAmount >= due.dueAmount ? DueStatus.PAID : DueStatus.PARTIAL,
+        };
+      });
+      const remainingAllocation =
+        remainingAmount > 0
+          ? allocatePayment(remainingAmount, duesAfterTarget, input.paymentDate)
+          : { allocations: [], totalAllocated: 0, unallocated: 0 };
+
+      allocationResult = {
+        allocations: [
+          { dueId: input.dueId, amount: targetAmount },
+          ...remainingAllocation.allocations,
+        ],
+        totalAllocated: roundCurrency(targetAmount + remainingAllocation.totalAllocated),
+        unallocated: remainingAllocation.unallocated,
+      };
+    }
 
     // Handle cheque if applicable
     let chequeId: string | undefined;

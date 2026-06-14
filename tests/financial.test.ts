@@ -1473,6 +1473,239 @@ describe("interest payment recording", () => {
     assert.equal(dueUpdates[0].data.status, DueStatus.PAID);
   });
 
+  it("allocates a card-launched full payment to the selected due before older unpaid dues", async () => {
+    const allocations: any[] = [];
+    const dueUpdates: any[] = [];
+    const paymentDate = new Date("2026-06-14");
+
+    const mockPrisma = {
+      $transaction: async (callback: any) => callback(mockPrisma),
+      interestDue: {
+        findMany: async () => [
+          {
+            id: "older-overdue",
+            dueDate: new Date("2026-05-14"),
+            periodStart: new Date("2026-04-14"),
+            periodEnd: new Date("2026-05-14"),
+            dueAmount: 3000,
+            paidAmount: 0,
+            waivedAmount: 0,
+            status: DueStatus.OVERDUE,
+          },
+          {
+            id: "selected-june",
+            dueDate: new Date("2026-06-14"),
+            periodStart: new Date("2026-05-14"),
+            periodEnd: new Date("2026-06-14"),
+            dueAmount: 3000,
+            paidAmount: 0,
+            waivedAmount: 0,
+            status: DueStatus.PENDING,
+          },
+        ],
+        update: async (args: any) => {
+          dueUpdates.push(args);
+          return args.data;
+        },
+      },
+      payment: {
+        create: async (args: any) => ({ id: "payment-selected", receiptNumber: "RCT-20260614-2001", ...args.data }),
+      },
+      paymentAllocation: {
+        create: async (args: any) => {
+          allocations.push(args);
+          return args.data;
+        },
+      },
+      auditLog: {
+        create: async (args: any) => args.data,
+      },
+    };
+
+    const { recordPayment } = loadPaymentEngine(mockPrisma, {
+      regenerateFutureDues: async () => undefined,
+      stopDueGeneration: async () => undefined,
+    });
+
+    const result = await recordPayment(
+      {
+        loanId: "loan-selected",
+        dueId: "selected-june",
+        amount: 3000,
+        paymentDate,
+        paymentMethod: PaymentMethod.CASH,
+      },
+      "user-1"
+    );
+
+    assert.equal(result.allocated, 3000);
+    assert.equal(result.unallocated, 0);
+    assert.deepEqual(
+      allocations.map((a) => ({ dueId: a.data.dueId, allocatedAmount: a.data.allocatedAmount })),
+      [{ dueId: "selected-june", allocatedAmount: 3000 }]
+    );
+    assert.equal(dueUpdates[0].where.id, "selected-june");
+    assert.equal(dueUpdates[0].data.paidAmount, 3000);
+    assert.equal(dueUpdates[0].data.status, DueStatus.PAID);
+  });
+
+  it("allocates a card-launched partial payment to the selected due and leaves it partial", async () => {
+    const allocations: any[] = [];
+    const dueUpdates: any[] = [];
+    const paymentDate = new Date("2026-06-14");
+
+    const mockPrisma = {
+      $transaction: async (callback: any) => callback(mockPrisma),
+      interestDue: {
+        findMany: async () => [
+          {
+            id: "older-overdue",
+            dueDate: new Date("2026-05-14"),
+            periodStart: new Date("2026-04-14"),
+            periodEnd: new Date("2026-05-14"),
+            dueAmount: 3000,
+            paidAmount: 0,
+            waivedAmount: 0,
+            status: DueStatus.OVERDUE,
+          },
+          {
+            id: "selected-june",
+            dueDate: new Date("2026-06-14"),
+            periodStart: new Date("2026-05-14"),
+            periodEnd: new Date("2026-06-14"),
+            dueAmount: 3000,
+            paidAmount: 0,
+            waivedAmount: 0,
+            status: DueStatus.PENDING,
+          },
+        ],
+        update: async (args: any) => {
+          dueUpdates.push(args);
+          return args.data;
+        },
+      },
+      payment: {
+        create: async (args: any) => ({ id: "payment-partial-selected", receiptNumber: "RCT-20260614-2002", ...args.data }),
+      },
+      paymentAllocation: {
+        create: async (args: any) => {
+          allocations.push(args);
+          return args.data;
+        },
+      },
+      auditLog: {
+        create: async (args: any) => args.data,
+      },
+    };
+
+    const { recordPayment } = loadPaymentEngine(mockPrisma, {
+      regenerateFutureDues: async () => undefined,
+      stopDueGeneration: async () => undefined,
+    });
+
+    const result = await recordPayment(
+      {
+        loanId: "loan-selected",
+        dueId: "selected-june",
+        amount: 1000,
+        paymentDate,
+        paymentMethod: PaymentMethod.CASH,
+      },
+      "user-1"
+    );
+
+    assert.equal(result.allocated, 1000);
+    assert.equal(result.unallocated, 0);
+    assert.deepEqual(
+      allocations.map((a) => ({ dueId: a.data.dueId, allocatedAmount: a.data.allocatedAmount })),
+      [{ dueId: "selected-june", allocatedAmount: 1000 }]
+    );
+    assert.equal(dueUpdates[0].where.id, "selected-june");
+    assert.equal(dueUpdates[0].data.paidAmount, 1000);
+    assert.equal(dueUpdates[0].data.status, DueStatus.PARTIAL);
+  });
+
+  it("allocates selected due first, then sends overpayment through oldest-first rules", async () => {
+    const allocations: any[] = [];
+    const dueUpdates: any[] = [];
+    const paymentDate = new Date("2026-06-14");
+
+    const mockPrisma = {
+      $transaction: async (callback: any) => callback(mockPrisma),
+      interestDue: {
+        findMany: async () => [
+          {
+            id: "older-overdue",
+            dueDate: new Date("2026-05-14"),
+            periodStart: new Date("2026-04-14"),
+            periodEnd: new Date("2026-05-14"),
+            dueAmount: 3000,
+            paidAmount: 0,
+            waivedAmount: 0,
+            status: DueStatus.OVERDUE,
+          },
+          {
+            id: "selected-june",
+            dueDate: new Date("2026-06-14"),
+            periodStart: new Date("2026-05-14"),
+            periodEnd: new Date("2026-06-14"),
+            dueAmount: 3000,
+            paidAmount: 0,
+            waivedAmount: 0,
+            status: DueStatus.PENDING,
+          },
+        ],
+        update: async (args: any) => {
+          dueUpdates.push(args);
+          return args.data;
+        },
+      },
+      payment: {
+        create: async (args: any) => ({ id: "payment-overpay-selected", receiptNumber: "RCT-20260614-2003", ...args.data }),
+      },
+      paymentAllocation: {
+        create: async (args: any) => {
+          allocations.push(args);
+          return args.data;
+        },
+      },
+      auditLog: {
+        create: async (args: any) => args.data,
+      },
+    };
+
+    const { recordPayment } = loadPaymentEngine(mockPrisma, {
+      regenerateFutureDues: async () => undefined,
+      stopDueGeneration: async () => undefined,
+    });
+
+    const result = await recordPayment(
+      {
+        loanId: "loan-selected",
+        dueId: "selected-june",
+        amount: 5000,
+        paymentDate,
+        paymentMethod: PaymentMethod.UPI,
+      },
+      "user-1"
+    );
+
+    assert.equal(result.allocated, 5000);
+    assert.equal(result.unallocated, 0);
+    assert.deepEqual(
+      allocations.map((a) => ({ dueId: a.data.dueId, allocatedAmount: a.data.allocatedAmount })),
+      [
+        { dueId: "selected-june", allocatedAmount: 3000 },
+        { dueId: "older-overdue", allocatedAmount: 2000 },
+      ]
+    );
+    assert.equal(dueUpdates[0].where.id, "selected-june");
+    assert.equal(dueUpdates[0].data.status, DueStatus.PAID);
+    assert.equal(dueUpdates[1].where.id, "older-overdue");
+    assert.equal(dueUpdates[1].data.paidAmount, 2000);
+    assert.equal(dueUpdates[1].data.status, DueStatus.PARTIAL);
+  });
+
   it("keeps an overdue due collectible and marks it partial after partial payment", async () => {
     const dueQueries: any[] = [];
     const dueUpdates: any[] = [];

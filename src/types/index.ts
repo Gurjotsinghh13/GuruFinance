@@ -142,6 +142,7 @@ export type CreateLoanInput = {
 
 export type RecordPaymentInput = {
   loanId: string;
+  dueId?: string;
   amount: number;
   paymentDate: Date;
   paymentMethod: PaymentMethod;

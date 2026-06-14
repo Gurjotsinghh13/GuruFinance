@@ -333,7 +333,7 @@ export function LoanDetailClient({ loan, summary, balanceWhatsappLink }: Props) 
           {activeTab === "payments" && (
             <div className="space-y-2">
               {loan.payments.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-4">No payments recorded</p>
+                <p className="text-sm text-gray-400 text-center py-4">No receipts recorded</p>
               ) : (
                 loan.payments.map((payment) => (
                   <div key={payment.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-3">

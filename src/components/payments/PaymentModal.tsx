@@ -63,6 +63,7 @@ export function PaymentModal({
     startTransition(async () => {
       const result = await recordPaymentAction({
         loanId,
+        dueId,
         amount,
         paymentDate: new Date(fd.get("paymentDate") as string),
         paymentMethod: method,
