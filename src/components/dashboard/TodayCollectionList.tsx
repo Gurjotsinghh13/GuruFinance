@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import { Phone, MessageCircle, IndianRupee, CheckCircle2, Clock } from "lucide-react";
-import { formatCurrency, createWhatsAppLink } from "@/utils";
+import { formatCurrency } from "@/utils";
 import type { TodayCollection } from "@/types";
 import { PaymentModal } from "@/components/payments/PaymentModal";
-import { buildDueReminderLink } from "@/features/whatsapp";
 
 interface Props {
   collections: TodayCollection[];
@@ -70,11 +69,6 @@ function CollectionCard({
   item: TodayCollection;
   onReceive: () => void;
 }) {
-  const waLink = createWhatsAppLink(
-    item.mobile,
-    `Dear ${item.borrowerName},\n\nYour interest payment of ${formatCurrency(item.remainingAmount)} is due today for loan ${item.loanNumber}.\n\nPlease arrange payment.\n\nThank you`
-  );
-
   return (
     <div className="card p-4">
       <div className="flex items-start justify-between gap-3">
@@ -117,7 +111,7 @@ function CollectionCard({
               <Phone className="w-3.5 h-3.5" />
             </a>
             <a
-              href={waLink}
+              href={item.whatsappLink}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 transition-colors"

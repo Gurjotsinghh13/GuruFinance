@@ -80,6 +80,92 @@ export async function getTemplate(type: MessageType): Promise<string> {
 }
 
 // ============================================================
+// TEMPLATE RENDERERS
+// ============================================================
+
+export function renderDueReminderMessage(
+  template: string,
+  params: {
+    borrowerName: string;
+    amount: number;
+    dueDate: Date | string;
+    loanNumber: string;
+  }
+): string {
+  return fillTemplate(template, {
+    borrowerName: params.borrowerName,
+    amount: formatCurrency(params.amount),
+    dueDate: formatDate(params.dueDate),
+    loanNumber: params.loanNumber,
+  });
+}
+
+export function renderPaymentReceiptMessage(
+  template: string,
+  params: {
+    borrowerName: string;
+    amount: number;
+    paymentDate: Date | string;
+    paymentMethod: string;
+    loanNumber: string;
+    receiptNumber: string;
+    remainingBalance: number;
+  }
+): string {
+  return fillTemplate(template, {
+    borrowerName: params.borrowerName,
+    amount: formatCurrency(params.amount),
+    paymentDate: formatDate(params.paymentDate),
+    paymentMethod: params.paymentMethod,
+    loanNumber: params.loanNumber,
+    receiptNumber: params.receiptNumber,
+    remainingBalance: formatCurrency(params.remainingBalance),
+  });
+}
+
+export function renderBalanceReminderMessage(
+  template: string,
+  params: {
+    borrowerName: string;
+    loanNumber: string;
+    principal: number;
+    pendingInterest: number;
+    totalOutstanding: number;
+  }
+): string {
+  return fillTemplate(template, {
+    borrowerName: params.borrowerName,
+    loanNumber: params.loanNumber,
+    principal: formatCurrency(params.principal),
+    pendingInterest: formatCurrency(params.pendingInterest),
+    totalOutstanding: formatCurrency(params.totalOutstanding),
+  });
+}
+
+export function renderAccountStatementMessage(
+  template: string,
+  params: {
+    borrowerName: string;
+    loanNumber: string;
+    principal: number;
+    interestRate: number | string;
+    totalPaid: number;
+    pendingInterest: number;
+    outstandingPrincipal: number;
+  }
+): string {
+  return fillTemplate(template, {
+    borrowerName: params.borrowerName,
+    loanNumber: params.loanNumber,
+    principal: formatCurrency(params.principal),
+    interestRate: String(params.interestRate),
+    totalPaid: formatCurrency(params.totalPaid),
+    pendingInterest: formatCurrency(params.pendingInterest),
+    outstandingPrincipal: formatCurrency(params.outstandingPrincipal),
+  });
+}
+
+// ============================================================
 // BUILD DUE REMINDER LINK
 // ============================================================
 
@@ -91,12 +177,7 @@ export async function buildDueReminderLink(params: {
   loanNumber: string;
 }): Promise<string> {
   const template = await getTemplate(MessageType.DUE_REMINDER);
-  const message = fillTemplate(template, {
-    borrowerName: params.borrowerName,
-    amount: formatCurrency(params.amount),
-    dueDate: formatDate(params.dueDate),
-    loanNumber: params.loanNumber,
-  });
+  const message = renderDueReminderMessage(template, params);
   return createWhatsAppLink(params.phone, message);
 }
 
@@ -115,15 +196,7 @@ export async function buildPaymentReceiptLink(params: {
   remainingBalance: number;
 }): Promise<string> {
   const template = await getTemplate(MessageType.PAYMENT_RECEIPT);
-  const message = fillTemplate(template, {
-    borrowerName: params.borrowerName,
-    amount: formatCurrency(params.amount),
-    paymentDate: formatDate(params.paymentDate),
-    paymentMethod: params.paymentMethod,
-    loanNumber: params.loanNumber,
-    receiptNumber: params.receiptNumber,
-    remainingBalance: formatCurrency(params.remainingBalance),
-  });
+  const message = renderPaymentReceiptMessage(template, params);
   return createWhatsAppLink(params.phone, message);
 }
 
@@ -140,13 +213,26 @@ export async function buildBalanceReminderLink(params: {
   totalOutstanding: number;
 }): Promise<string> {
   const template = await getTemplate(MessageType.BALANCE_REMINDER);
-  const message = fillTemplate(template, {
-    borrowerName: params.borrowerName,
-    loanNumber: params.loanNumber,
-    principal: formatCurrency(params.principal),
-    pendingInterest: formatCurrency(params.pendingInterest),
-    totalOutstanding: formatCurrency(params.totalOutstanding),
-  });
+  const message = renderBalanceReminderMessage(template, params);
+  return createWhatsAppLink(params.phone, message);
+}
+
+// ============================================================
+// BUILD ACCOUNT STATEMENT LINK
+// ============================================================
+
+export async function buildAccountStatementLink(params: {
+  phone: string;
+  borrowerName: string;
+  loanNumber: string;
+  principal: number;
+  interestRate: number | string;
+  totalPaid: number;
+  pendingInterest: number;
+  outstandingPrincipal: number;
+}): Promise<string> {
+  const template = await getTemplate(MessageType.ACCOUNT_STATEMENT);
+  const message = renderAccountStatementMessage(template, params);
   return createWhatsAppLink(params.phone, message);
 }
 

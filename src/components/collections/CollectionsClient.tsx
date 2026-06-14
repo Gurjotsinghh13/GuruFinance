@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Phone, MessageCircle, CheckCircle2 } from "lucide-react";
-import { formatCurrency, formatDate, createWhatsAppLink } from "@/utils";
+import { formatCurrency, formatDate } from "@/utils";
 import { DueStatus } from "@prisma/client";
 import { PaymentModal } from "@/components/payments/PaymentModal";
 
@@ -21,6 +21,7 @@ interface DueItem {
     loanNumber: string;
     borrower: { id: string; fullName: string; mobile: string };
   };
+  whatsappLink: string;
 }
 
 interface Props {
@@ -90,10 +91,6 @@ export function CollectionsClient({ dues, totalExpected, activeView }: Props) {
         {dues.map((due) => {
           const outstanding =
             Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount);
-          const waLink = createWhatsAppLink(
-            due.loan.borrower.mobile,
-            `Dear ${due.loan.borrower.fullName},\n\nYour interest payment of ${formatCurrency(outstanding)} for loan ${due.loan.loanNumber} is ${due.status === DueStatus.OVERDUE ? `overdue by ${due.daysOverdue} days` : `due on ${formatDate(due.dueDate)}`}.\n\nPlease arrange payment.\n\nThank you`
-          );
 
           return (
             <div
@@ -152,7 +149,7 @@ export function CollectionsClient({ dues, totalExpected, activeView }: Props) {
                       <Phone className="w-3.5 h-3.5" />
                     </a>
                     <a
-                      href={waLink}
+                      href={due.whatsappLink}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 transition-colors"

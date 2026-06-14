@@ -9,7 +9,7 @@ import {
   MessageCircle, Phone, FileText, MoreVertical,
   ChevronDown, ChevronUp, Plus
 } from "lucide-react";
-import { formatCurrency, formatDate, formatDateTime, formatPercent, createWhatsAppLink } from "@/utils";
+import { formatCurrency, formatDate, formatDateTime, formatPercent } from "@/utils";
 import { DueStatus, LoanStatus, PaymentMethod } from "@prisma/client";
 import { PaymentModal } from "@/components/payments/PaymentModal";
 import { closeLoanAction, principalRepaymentAction, loanTopUpAction } from "@/app/actions/loans";
@@ -25,6 +25,7 @@ interface Props {
     cheques: Cheque[];
   };
   summary: LoanSummaryOutput;
+  balanceWhatsappLink: string;
 }
 
 type Tab = "dues" | "payments" | "transactions";
@@ -34,7 +35,7 @@ const COLLECTIBLE_DUE_STATUSES: DueStatus[] = [
   DueStatus.OVERDUE,
 ];
 
-export function LoanDetailClient({ loan, summary }: Props) {
+export function LoanDetailClient({ loan, summary, balanceWhatsappLink }: Props) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("dues");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -54,11 +55,6 @@ export function LoanDetailClient({ loan, summary }: Props) {
   const nextDue = pendingDues.sort(
     (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
   )[0];
-
-  const waBalanceLink = createWhatsAppLink(
-    loan.borrower.mobile,
-    `Dear ${loan.borrower.fullName},\n\nYour loan ${loan.loanNumber} balance:\n\nPrincipal Outstanding: ${formatCurrency(Number(loan.currentPrincipal))}\nPending Interest: ${formatCurrency(summary.pendingInterest)}\nOverdue Interest: ${formatCurrency(summary.overdueInterest)}\n\nPlease contact us.\n\nThank you`
-  );
 
   function handleCloseLoan() {
     startTransition(async () => {
@@ -119,7 +115,7 @@ export function LoanDetailClient({ loan, summary }: Props) {
                   </>
                 )}
                 <a
-                  href={waBalanceLink}
+                  href={balanceWhatsappLink}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 w-full"

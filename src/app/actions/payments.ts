@@ -11,6 +11,7 @@ import { recordPayment } from "@/features/payment-engine";
 import type { RecordPaymentInput, DashboardStats, TodayCollection, OverdueAccount } from "@/types";
 import { startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns";
 import { DueStatus, LoanStatus } from "@prisma/client";
+import { buildBalanceReminderLink, buildDueReminderLink } from "@/features/whatsapp";
 
 // ============================================================
 // RECORD PAYMENT
@@ -74,19 +75,33 @@ export async function getTodayCollectionsAction(): Promise<TodayCollection[]> {
     orderBy: { dueDate: "asc" },
   });
 
-  return dues.map((due) => ({
-    borrowerId: due.loan.borrower.id,
-    borrowerName: due.loan.borrower.fullName,
-    mobile: due.loan.borrower.mobile,
-    loanId: due.loanId,
-    loanNumber: due.loan.loanNumber,
-    dueId: due.id,
-    dueAmount: Number(due.dueAmount),
-    paidAmount: Number(due.paidAmount),
-    remainingAmount: Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount),
-    status: due.status,
-    dueDate: due.dueDate,
-  }));
+  return Promise.all(
+    dues.map(async (due) => {
+      const remainingAmount =
+        Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount);
+
+      return {
+        borrowerId: due.loan.borrower.id,
+        borrowerName: due.loan.borrower.fullName,
+        mobile: due.loan.borrower.mobile,
+        loanId: due.loanId,
+        loanNumber: due.loan.loanNumber,
+        dueId: due.id,
+        dueAmount: Number(due.dueAmount),
+        paidAmount: Number(due.paidAmount),
+        remainingAmount,
+        status: due.status,
+        dueDate: due.dueDate,
+        whatsappLink: await buildDueReminderLink({
+          phone: due.loan.borrower.mobile,
+          borrowerName: due.loan.borrower.fullName,
+          amount: remainingAmount,
+          dueDate: due.dueDate,
+          loanNumber: due.loan.loanNumber,
+        }),
+      };
+    })
+  );
 }
 
 // ============================================================
@@ -115,7 +130,10 @@ export async function getOverdueAccountsAction(): Promise<OverdueAccount[]> {
   });
 
   // Group by borrower
-  const byBorrower = new Map<string, OverdueAccount>();
+  const byBorrower = new Map<
+    string,
+    OverdueAccount & { principalOutstanding: number; loanIds: Set<string> }
+  >();
 
   for (const due of overdueDues) {
     const key = due.loan.borrowerId;
@@ -124,6 +142,10 @@ export async function getOverdueAccountsAction(): Promise<OverdueAccount[]> {
     if (byBorrower.has(key)) {
       const existing = byBorrower.get(key)!;
       existing.totalOverdue += outstanding;
+      if (!existing.loanIds.has(due.loanId)) {
+        existing.principalOutstanding += Number(due.loan.currentPrincipal);
+        existing.loanIds.add(due.loanId);
+      }
       existing.overdueCount += 1;
       if (due.daysOverdue > existing.daysOverdue) {
         existing.daysOverdue = due.daysOverdue;
@@ -138,11 +160,27 @@ export async function getOverdueAccountsAction(): Promise<OverdueAccount[]> {
         totalOverdue: outstanding,
         daysOverdue: due.daysOverdue,
         overdueCount: 1,
+        principalOutstanding: Number(due.loan.currentPrincipal),
+        loanIds: new Set([due.loanId]),
       });
     }
   }
 
-  return Array.from(byBorrower.values()).sort((a, b) => b.daysOverdue - a.daysOverdue);
+  const accounts = Array.from(byBorrower.values()).sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+  return Promise.all(
+    accounts.map(async ({ principalOutstanding, loanIds, ...account }) => ({
+      ...account,
+      whatsappLink: await buildBalanceReminderLink({
+        phone: account.mobile,
+        borrowerName: account.borrowerName,
+        loanNumber: account.overdueCount > 1 ? `${account.loanNumber} and other dues` : account.loanNumber,
+        principal: principalOutstanding,
+        pendingInterest: account.totalOverdue,
+        totalOutstanding: principalOutstanding + account.totalOverdue,
+      }),
+    }))
+  );
 }
 
 // ============================================================

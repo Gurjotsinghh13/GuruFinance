@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { startOfDay, subDays } from "date-fns";
-import { DueStatus, LoanFrequency, LoanStatus, PaymentMethod } from "@prisma/client";
+import { DueStatus, LoanFrequency, LoanStatus, MessageType, PaymentMethod } from "@prisma/client";
 import {
   allocatePayment,
   calculateLoanSummary,
@@ -211,6 +211,150 @@ function loadPaymentActions(mockPrisma: MockPrisma, options: any = {}) {
 
   return require("../src/app/actions/payments");
 }
+
+function loadWhatsAppFeature(mockPrisma: MockPrisma) {
+  const prismaPath = require.resolve("../src/lib/prisma");
+  const whatsappPath = require.resolve("../src/features/whatsapp");
+
+  delete require.cache[prismaPath];
+  delete require.cache[whatsappPath];
+
+  require.cache[prismaPath] = {
+    id: prismaPath,
+    filename: prismaPath,
+    loaded: true,
+    exports: { prisma: mockPrisma },
+  } as NodeModule;
+
+  return require("../src/features/whatsapp");
+}
+
+describe("WhatsApp template rendering", () => {
+  it("renders due reminder templates with amount, due date, borrower, and loan number", () => {
+    const { renderDueReminderMessage } = loadWhatsAppFeature({
+      settings: { findUnique: async () => null },
+    });
+
+    const message = renderDueReminderMessage(
+      "Dear {{borrowerName}}, pay {{amount}} by {{dueDate}} for {{loanNumber}}.",
+      {
+        borrowerName: "Gurjot Singh",
+        amount: 3000,
+        dueDate: new Date("2026-08-15"),
+        loanNumber: "LN-2026-1001",
+      }
+    );
+
+    assert.equal(
+      message,
+      "Dear Gurjot Singh, pay \u20b93,000 by 15 Aug 2026 for LN-2026-1001."
+    );
+  });
+
+  it("renders balance reminder templates with outstanding totals", () => {
+    const { renderBalanceReminderMessage } = loadWhatsAppFeature({
+      settings: { findUnique: async () => null },
+    });
+
+    const message = renderBalanceReminderMessage(
+      "{{borrowerName}} {{loanNumber}} principal {{principal}} interest {{pendingInterest}} total {{totalOutstanding}}",
+      {
+        borrowerName: "Aman Verma",
+        loanNumber: "LN-2026-2002",
+        principal: 75000,
+        pendingInterest: 4500,
+        totalOutstanding: 79500,
+      }
+    );
+
+    assert.equal(
+      message,
+      "Aman Verma LN-2026-2002 principal \u20b975,000 interest \u20b94,500 total \u20b979,500"
+    );
+  });
+
+  it("renders payment receipt templates with receipt details and remaining balance", () => {
+    const { renderPaymentReceiptMessage } = loadWhatsAppFeature({
+      settings: { findUnique: async () => null },
+    });
+
+    const message = renderPaymentReceiptMessage(
+      "{{receiptNumber}} {{borrowerName}} paid {{amount}} on {{paymentDate}} by {{paymentMethod}} for {{loanNumber}} balance {{remainingBalance}}",
+      {
+        borrowerName: "Sunita Devi",
+        amount: 2250,
+        paymentDate: new Date("2026-06-14"),
+        paymentMethod: "UPI",
+        loanNumber: "LN-2026-3003",
+        receiptNumber: "RCT-20260614-1234",
+        remainingBalance: 77250,
+      }
+    );
+
+    assert.equal(
+      message,
+      "RCT-20260614-1234 Sunita Devi paid \u20b92,250 on 14 Jun 2026 by UPI for LN-2026-3003 balance \u20b977,250"
+    );
+  });
+
+  it("renders account statement templates with statement totals", () => {
+    const { renderAccountStatementMessage } = loadWhatsAppFeature({
+      settings: { findUnique: async () => null },
+    });
+
+    const message = renderAccountStatementMessage(
+      "{{borrowerName}} {{loanNumber}} principal {{principal}} rate {{interestRate}} paid {{totalPaid}} pending {{pendingInterest}} outstanding {{outstandingPrincipal}}",
+      {
+        borrowerName: "Rahul Sharma",
+        loanNumber: "LN-2026-4004",
+        principal: 100000,
+        interestRate: 3,
+        totalPaid: 12000,
+        pendingInterest: 3000,
+        outstandingPrincipal: 100000,
+      }
+    );
+
+    assert.equal(
+      message,
+      "Rahul Sharma LN-2026-4004 principal \u20b91,00,000 rate 3 paid \u20b912,000 pending \u20b93,000 outstanding \u20b91,00,000"
+    );
+  });
+
+  it("loads custom templates from Settings and URL-encodes WhatsApp links", async () => {
+    const templateLookups: any[] = [];
+    const { buildDueReminderLink } = loadWhatsAppFeature({
+      settings: {
+        findUnique: async (args: any) => {
+          templateLookups.push(args);
+          return {
+            value:
+              "Reminder for {{borrowerName}}\nAmount: {{amount}}\nDue: {{dueDate}}\nLoan: {{loanNumber}}",
+          };
+        },
+      },
+    });
+
+    const link = await buildDueReminderLink({
+      phone: "98765 43210",
+      borrowerName: "Gurjot Singh",
+      amount: 2250,
+      dueDate: new Date("2026-07-01"),
+      loanNumber: "LN-2026-5005",
+    });
+    const url = new URL(link);
+
+    assert.deepEqual(templateLookups[0].where, {
+      key: `whatsapp_template_${MessageType.DUE_REMINDER}`,
+    });
+    assert.equal(url.hostname, "wa.me");
+    assert.equal(url.pathname, "/919876543210");
+    assert.equal(
+      url.searchParams.get("text"),
+      "Reminder for Gurjot Singh\nAmount: \u20b92,250\nDue: 01 Jul 2026\nLoan: LN-2026-5005"
+    );
+  });
+});
 
 describe("financial calculations", () => {
   it("calculates simple monthly and daily interest for realistic loan amounts", () => {

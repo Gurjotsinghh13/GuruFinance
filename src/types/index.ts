@@ -87,6 +87,7 @@ export type TodayCollection = {
   remainingAmount: number;
   status: DueStatus;
   dueDate: Date;
+  whatsappLink?: string;
 };
 
 export type OverdueAccount = {
@@ -98,6 +99,7 @@ export type OverdueAccount = {
   totalOverdue: number;
   daysOverdue: number;
   overdueCount: number;
+  whatsappLink?: string;
 };
 
 // ============================================================

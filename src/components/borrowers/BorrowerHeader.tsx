@@ -8,22 +8,17 @@ import {
   RefreshCw, MoreVertical, MapPin, FileText
 } from "lucide-react";
 import { archiveBorrowerAction, restoreBorrowerAction } from "@/app/actions/borrowers";
-import { createWhatsAppLink } from "@/utils";
 import type { Borrower } from "@prisma/client";
 
 interface Props {
   borrower: Borrower & { loans: any[] };
+  whatsappLink: string;
 }
 
-export function BorrowerHeader({ borrower }: Props) {
+export function BorrowerHeader({ borrower, whatsappLink }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [showMenu, setShowMenu] = useState(false);
-
-  const waLink = createWhatsAppLink(
-    borrower.mobile,
-    `Dear ${borrower.fullName}, this is regarding your loan account.`
-  );
 
   function handleArchive() {
     setShowMenu(false);
@@ -154,7 +149,7 @@ export function BorrowerHeader({ borrower }: Props) {
             Call
           </a>
           <a
-            href={waLink}
+            href={whatsappLink}
             target="_blank"
             rel="noopener noreferrer"
             className="btn-whatsapp flex-1 text-sm py-2"

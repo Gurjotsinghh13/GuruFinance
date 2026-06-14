@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { calculateLoanSummary } from "@/features/interest-engine";
 import { LoanDetailClient } from "@/components/loans/LoanDetailClient";
 import { serializeDecimal } from "@/utils";
+import { buildBalanceReminderLink } from "@/features/whatsapp";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -46,6 +47,21 @@ export default async function LoanDetailPage({ params }: Props) {
       penaltyAmount: Number(d.penaltyAmount),
     })),
   });
+  const balanceWhatsappLink = await buildBalanceReminderLink({
+    phone: loan.borrower.mobile,
+    borrowerName: loan.borrower.fullName,
+    loanNumber: loan.loanNumber,
+    principal: Number(loan.currentPrincipal),
+    pendingInterest: summary.pendingInterest + summary.overdueInterest,
+    totalOutstanding:
+      Number(loan.currentPrincipal) + summary.pendingInterest + summary.overdueInterest,
+  });
 
-  return <LoanDetailClient loan={serializeDecimal(loan)} summary={summary} />;
+  return (
+    <LoanDetailClient
+      loan={serializeDecimal(loan)}
+      summary={summary}
+      balanceWhatsappLink={balanceWhatsappLink}
+    />
+  );
 }

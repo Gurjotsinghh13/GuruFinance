@@ -1,7 +1,7 @@
 "use client";
 
 import { Phone, MessageCircle, AlertTriangle } from "lucide-react";
-import { formatCurrency, createWhatsAppLink } from "@/utils";
+import { formatCurrency } from "@/utils";
 import type { OverdueAccount } from "@/types";
 import Link from "next/link";
 
@@ -25,13 +25,7 @@ export function OverdueList({ accounts }: Props) {
       </div>
 
       <div className="space-y-2">
-        {accounts.map((account) => {
-          const waLink = createWhatsAppLink(
-            account.mobile,
-            `Dear ${account.borrowerName},\n\nYour loan payment is overdue by ${account.daysOverdue} days.\n\nOverdue Amount: ${formatCurrency(account.totalOverdue)}\nLoan: ${account.loanNumber}\n\nPlease contact us immediately.\n\nThank you`
-          );
-
-          return (
+        {accounts.map((account) => (
             <div
               key={account.borrowerId}
               className="card p-4 border-red-200 bg-red-50"
@@ -69,7 +63,7 @@ export function OverdueList({ accounts }: Props) {
                     <Phone className="w-4 h-4" />
                   </a>
                   <a
-                    href={waLink}
+                    href={account.whatsappLink}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 transition-colors"
@@ -80,8 +74,7 @@ export function OverdueList({ accounts }: Props) {
                 </div>
               </div>
             </div>
-          );
-        })}
+        ))}
       </div>
     </section>
   );

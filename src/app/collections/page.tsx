@@ -4,6 +4,7 @@ import { DueStatus, LoanStatus } from "@prisma/client";
 import { CollectionsClient } from "@/components/collections/CollectionsClient";
 import { startOfDay, endOfDay, addDays, subDays } from "date-fns";
 import { serializeDecimal } from "@/utils";
+import { buildDueReminderLink } from "@/features/whatsapp";
 
 interface Props {
   searchParams: Promise<{ view?: string; date?: string }>;
@@ -50,10 +51,27 @@ export default async function CollectionsPage({ searchParams }: Props) {
     (s, d) => s + Number(d.dueAmount) - Number(d.paidAmount) - Number(d.waivedAmount),
     0
   );
+  const duesWithLinks = await Promise.all(
+    dues.map(async (due) => {
+      const remainingAmount =
+        Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount);
+
+      return {
+        ...due,
+        whatsappLink: await buildDueReminderLink({
+          phone: due.loan.borrower.mobile,
+          borrowerName: due.loan.borrower.fullName,
+          amount: remainingAmount,
+          dueDate: due.dueDate,
+          loanNumber: due.loan.loanNumber,
+        }),
+      };
+    })
+  );
 
   return (
     <CollectionsClient
-      dues={serializeDecimal(dues)}
+      dues={serializeDecimal(duesWithLinks)}
       totalExpected={totalExpected}
       activeView={view}
     />

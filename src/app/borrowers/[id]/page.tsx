@@ -7,6 +7,7 @@ import { PlusCircle } from "lucide-react";
 import { formatCurrency, serializeDecimal } from "@/utils";
 import { LoanStatus } from "@prisma/client";
 import { calculateLoanSummary } from "@/features/interest-engine";
+import { buildBalanceReminderLink } from "@/features/whatsapp";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -47,11 +48,27 @@ export default async function BorrowerDetailPage({ params }: Props) {
 
     return { loan, summary };
   });
+  const activeLoanNumbers = borrower.loans
+    .filter((loan) => loan.status === LoanStatus.ACTIVE)
+    .map((loan) => loan.loanNumber);
+  const whatsappLink = await buildBalanceReminderLink({
+    phone: borrower.mobile,
+    borrowerName: borrower.fullName,
+    loanNumber:
+      activeLoanNumbers.length === 0
+        ? "No active loans"
+        : activeLoanNumbers.length === 1
+        ? activeLoanNumbers[0]
+        : activeLoanNumbers.join(", "),
+    principal: totalPrincipal,
+    pendingInterest: totalPending + totalOverdue,
+    totalOutstanding: totalPrincipal + totalPending + totalOverdue,
+  });
 
   return (
     <div className="max-w-2xl mx-auto space-y-5">
       {/* Borrower header */}
-      <BorrowerHeader borrower={serializeDecimal(borrower)} />
+      <BorrowerHeader borrower={serializeDecimal(borrower)} whatsappLink={whatsappLink} />
 
       {/* Financial summary */}
       <div className="card p-4">
