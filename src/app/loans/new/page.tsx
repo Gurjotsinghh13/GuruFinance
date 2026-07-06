@@ -47,7 +47,7 @@ export default function NewLoanPage() {
         borrowerId,
         principalAmount: parseFloat(fd.get("principalAmount") as string),
         interestRate: parseFloat(fd.get("interestRate") as string),
-        interestType: fd.get("interestType") as InterestType,
+        interestType,
         loanFrequency: fd.get("loanFrequency") as LoanFrequency,
         compoundingRule: fd.get("compoundingRule") as CompoundingRule | undefined,
         startDate,
@@ -177,7 +177,6 @@ export default function NewLoanPage() {
                       : "bg-white text-gray-700 border-gray-200 hover:border-indigo-300"
                   }`}
                 >
-                  <input type="radio" name="interestType" value={opt.value} className="sr-only" defaultChecked={opt.value === InterestType.SIMPLE} />
                   {opt.label}
                 </button>
               ))}

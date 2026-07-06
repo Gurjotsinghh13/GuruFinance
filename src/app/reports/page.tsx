@@ -4,6 +4,7 @@ import { DueStatus, LoanStatus } from "@prisma/client";
 import { ReportsClient } from "@/components/reports/ReportsClient";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { serializeDecimal } from "@/utils";
+import { calculateEffectivePrincipal } from "@/features/interest-engine";
 
 export default async function ReportsPage() {
   const session = await requireAuth();
@@ -60,6 +61,7 @@ export default async function ReportsPage() {
       loanNumber: true,
       currentPrincipal: true,
       interestRate: true,
+      interestType: true,
       loanFrequency: true,
       borrower: { select: { fullName: true } },
       interestDues: {
@@ -73,10 +75,24 @@ export default async function ReportsPage() {
           waivedAmount: true,
           status: true,
           dueDate: true,
+          wasCompounded: true,
         },
       },
     },
   });
+  const activeLoansWithEffectivePrincipal = activeLoansSummary.map((loan) => ({
+    ...loan,
+    effectivePrincipal: calculateEffectivePrincipal(
+      Number(loan.currentPrincipal),
+      loan.interestType,
+      loan.interestDues.map((due) => ({
+        dueAmount: Number(due.dueAmount),
+        paidAmount: Number(due.paidAmount),
+        waivedAmount: Number(due.waivedAmount),
+        wasCompounded: due.wasCompounded,
+      }))
+    ),
+  }));
 
   const overdueDues = await prisma.interestDue.findMany({
     where: {
@@ -95,7 +111,7 @@ export default async function ReportsPage() {
   return (
     <ReportsClient
       monthlyData={monthlyData}
-      activeLoansSummary={serializeDecimal(activeLoansSummary)}
+      activeLoansSummary={serializeDecimal(activeLoansWithEffectivePrincipal)}
       overdueTotal={overdueTotal}
     />
   );

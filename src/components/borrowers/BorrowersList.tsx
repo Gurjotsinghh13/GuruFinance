@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search, Phone, ChevronRight, Archive, RefreshCw } from "lucide-react";
 import { formatCurrency } from "@/utils";
+import { calculateEffectivePrincipal } from "@/features/interest-engine";
 import { DueStatus } from "@prisma/client";
 import { archiveBorrowerAction, restoreBorrowerAction } from "@/app/actions/borrowers";
 
@@ -17,7 +18,8 @@ interface BorrowerData {
     id: string;
     status: string;
     currentPrincipal: any;
-    interestDues: { dueAmount: any; paidAmount: any; waivedAmount: any; status: string; dueDate?: Date | string }[];
+    interestType: any;
+    interestDues: { dueAmount: any; paidAmount: any; waivedAmount: any; status: string; dueDate?: Date | string; wasCompounded: boolean }[];
   }[];
   _count: { loans: number };
 }
@@ -49,7 +51,18 @@ export function BorrowersList({ borrowers, initialSearch, showArchived }: Props)
 
     const activeLoans = loans.filter((l) => l.status === "ACTIVE");
     const totalPrincipal = activeLoans.reduce(
-      (s, l) => s + Number(l.currentPrincipal),
+      (s, l) =>
+        s +
+        calculateEffectivePrincipal(
+          Number(l.currentPrincipal),
+          l.interestType,
+          l.interestDues.map((due) => ({
+            dueAmount: Number(due.dueAmount),
+            paidAmount: Number(due.paidAmount),
+            waivedAmount: Number(due.waivedAmount),
+            wasCompounded: due.wasCompounded,
+          }))
+        ),
       0
     );
     let overdueInterest = 0;

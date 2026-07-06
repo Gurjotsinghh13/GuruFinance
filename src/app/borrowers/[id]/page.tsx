@@ -29,6 +29,7 @@ export default async function BorrowerDetailPage({ params }: Props) {
   const summary = calculateLoanSummary({
     originalPrincipal: Number(loan.principalAmount),
     currentPrincipal: Number(loan.currentPrincipal),
+    interestType: loan.interestType,
     dues: loan.interestDues.map((d) => ({
       dueAmount: Number(d.dueAmount),
       paidAmount: Number(d.paidAmount),
@@ -36,15 +37,19 @@ export default async function BorrowerDetailPage({ params }: Props) {
       status: d.status,
       penaltyAmount: Number(d.penaltyAmount),
       dueDate: d.dueDate,
+      wasCompounded: d.wasCompounded,
     })),
   });
 
 
     if (loan.status === LoanStatus.ACTIVE) {
-      totalPrincipal += Number(loan.currentPrincipal);
+      totalPrincipal += summary.effectivePrincipal;
       totalInterestReceived += summary.totalInterestReceived;
       totalPending += summary.pendingInterest;
-      totalOverdue += summary.overdueInterest;
+      totalOverdue += Math.max(
+        0,
+        summary.overdueInterest - summary.capitalizedInterest
+      );
     }
 
     return { loan, summary };
@@ -64,6 +69,12 @@ export default async function BorrowerDetailPage({ params }: Props) {
     principal: totalPrincipal,
     pendingInterest: totalPending + totalOverdue,
     totalOutstanding: totalPrincipal + totalPending + totalOverdue,
+    interestType:
+      activeLoanNumbers.length === 1
+        ? borrower.loans.find((loan) => loan.status === LoanStatus.ACTIVE)?.interestType === "COMPOUND"
+          ? "Compound Interest"
+          : "Simple Interest"
+        : "Multiple Interest Types",
   });
 
   return (

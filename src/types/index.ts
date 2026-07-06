@@ -99,6 +99,7 @@ export type OverdueAccount = {
   totalOverdue: number;
   daysOverdue: number;
   overdueCount: number;
+  interestType?: InterestType;
   whatsappLink?: string;
 };
 

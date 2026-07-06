@@ -5,11 +5,19 @@
 // ============================================================
 
 import { prisma } from "@/lib/prisma";
-import { LoanFrequency, LoanStatus, DueStatus } from "@prisma/client";
 import {
+  CompoundingRule,
+  InterestType,
+  LoanFrequency,
+  LoanStatus,
+  DueStatus,
+} from "@prisma/client";
+import {
+  calculateEffectivePrincipal,
   generateDueDates,
   calculatePeriodDue,
   roundCurrency,
+  shouldCompound,
 } from "@/features/interest-engine";
 import { addDays, addMonths, startOfDay, endOfDay } from "date-fns";
 
@@ -31,7 +39,6 @@ export async function generateDuesForLoan(
       include: {
         interestDues: {
           orderBy: { dueDate: "desc" },
-          take: 1,
         },
       },
     });
@@ -67,7 +74,16 @@ export async function generateDuesForLoan(
     if (dueDates.length === 0) return { generated, errors };
 
     // Get current principal (may have changed due to repayments/top-ups)
-    const currentPrincipal = Number(loan.currentPrincipal);
+    const currentPrincipal = calculateEffectivePrincipal(
+      Number(loan.currentPrincipal),
+      loan.interestType,
+      loan.interestDues.map((due) => ({
+        dueAmount: Number(due.dueAmount),
+        paidAmount: Number(due.paidAmount),
+        waivedAmount: Number(due.waivedAmount),
+        wasCompounded: due.wasCompounded,
+      }))
+    );
 
     const dueRecords = dueDates.map((dueDate) => {
       const result = calculatePeriodDue({
@@ -188,6 +204,81 @@ export async function updateOverdueStatus(): Promise<{ updated: number }> {
 }
 
 // ============================================================
+// CAPITALIZE OVERDUE INTEREST FOR COMPOUND LOANS
+// Marks eligible historical dues without changing their amounts, then
+// regenerates only future dues from the new effective principal.
+// ============================================================
+
+export async function capitalizeOverdueInterest(
+  asOfDate: Date = new Date()
+): Promise<{ capitalized: number; loansUpdated: number }> {
+  const today = startOfDay(asOfDate);
+  const loans = await prisma.loan.findMany({
+    where: {
+      status: LoanStatus.ACTIVE,
+      interestType: InterestType.COMPOUND,
+      loanFrequency: LoanFrequency.MONTHLY,
+    },
+    include: {
+      interestDues: {
+        where: {
+          status: DueStatus.OVERDUE,
+          dueDate: { lt: today },
+        },
+        orderBy: { dueDate: "asc" },
+      },
+    },
+  });
+
+  let capitalized = 0;
+  let loansUpdated = 0;
+
+  for (const loan of loans) {
+    const rule = loan.compoundingRule || CompoundingRule.MONTHLY;
+    const waiting: typeof loan.interestDues = [];
+    let missedConsecutivePayments = 0;
+    let loanChanged = false;
+
+    for (const due of loan.interestDues) {
+      const outstanding = roundCurrency(
+        Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount)
+      );
+
+      if (outstanding <= 0) {
+        missedConsecutivePayments = 0;
+        waiting.length = 0;
+        continue;
+      }
+
+      missedConsecutivePayments += 1;
+      if (!due.wasCompounded) waiting.push(due);
+
+      if (!shouldCompound(missedConsecutivePayments, rule)) continue;
+
+      for (const eligibleDue of waiting) {
+        await prisma.interestDue.update({
+          where: { id: eligibleDue.id },
+          data: {
+            wasCompounded: true,
+            compoundedAt: asOfDate,
+          },
+        });
+        capitalized += 1;
+        loanChanged = true;
+      }
+      waiting.length = 0;
+    }
+
+    if (loanChanged) {
+      loansUpdated += 1;
+      await regenerateFutureDues(loan.id, addDays(today, 1));
+    }
+  }
+
+  return { capitalized, loansUpdated };
+}
+
+// ============================================================
 // REGENERATE DUES AFTER PRINCIPAL CHANGE
 // Called after principal repayment or top-up.
 // Deletes future PENDING dues, recalculates future PARTIAL dues,
@@ -214,19 +305,26 @@ export async function regenerateFutureDues(
     where: { id: loanId },
     include: {
       interestDues: {
-        where: {
-          dueDate: { gte: from },
-          status: DueStatus.PARTIAL,
-        },
         orderBy: { dueDate: "asc" },
       },
     },
   });
 
   if (loan && loan.status === LoanStatus.ACTIVE) {
-    const currentPrincipal = Number(loan.currentPrincipal);
+    const currentPrincipal = calculateEffectivePrincipal(
+      Number(loan.currentPrincipal),
+      loan.interestType,
+      loan.interestDues.map((due) => ({
+        dueAmount: Number(due.dueAmount),
+        paidAmount: Number(due.paidAmount),
+        waivedAmount: Number(due.waivedAmount),
+        wasCompounded: due.wasCompounded,
+      }))
+    );
 
-    for (const due of loan.interestDues.filter((d) => d.status === DueStatus.PARTIAL)) {
+    for (const due of loan.interestDues.filter(
+      (d) => d.status === DueStatus.PARTIAL && d.dueDate >= from
+    )) {
       const recalculated = calculatePeriodDue({
         principal: currentPrincipal,
         interestRate: Number(loan.interestRate),

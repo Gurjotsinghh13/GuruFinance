@@ -24,10 +24,10 @@ const TEMPLATE_LABELS: Record<string, string> = {
 };
 
 const TEMPLATE_VARS: Record<string, string[]> = {
-  DUE_REMINDER: ["{{borrowerName}}", "{{amount}}", "{{dueDate}}", "{{loanNumber}}"],
-  BALANCE_REMINDER: ["{{borrowerName}}", "{{loanNumber}}", "{{principal}}", "{{pendingInterest}}", "{{totalOutstanding}}"],
-  PAYMENT_RECEIPT: ["{{borrowerName}}", "{{allocationDetails}}", "{{amount}}", "{{paymentDate}}", "{{paymentMethod}}", "{{loanNumber}}", "{{receiptNumber}}", "{{remainingBalance}}"],
-  ACCOUNT_STATEMENT: ["{{borrowerName}}", "{{loanNumber}}", "{{principal}}", "{{interestRate}}", "{{totalPaid}}", "{{pendingInterest}}", "{{outstandingPrincipal}}"],
+  DUE_REMINDER: ["{{borrowerName}}", "{{amount}}", "{{dueDate}}", "{{loanNumber}}", "{{interestType}}"],
+  BALANCE_REMINDER: ["{{borrowerName}}", "{{loanNumber}}", "{{interestType}}", "{{principal}}", "{{pendingInterest}}", "{{totalOutstanding}}"],
+  PAYMENT_RECEIPT: ["{{borrowerName}}", "{{allocationDetails}}", "{{amount}}", "{{paymentDate}}", "{{paymentMethod}}", "{{loanNumber}}", "{{interestType}}", "{{receiptNumber}}", "{{remainingBalance}}"],
+  ACCOUNT_STATEMENT: ["{{borrowerName}}", "{{loanNumber}}", "{{interestType}}", "{{principal}}", "{{interestRate}}", "{{totalPaid}}", "{{pendingInterest}}", "{{outstandingPrincipal}}"],
 };
 
 export function SettingsClient({ user, templates }: Props) {

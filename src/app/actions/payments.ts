@@ -12,7 +12,10 @@ import type { RecordPaymentInput, DashboardStats, TodayCollection, OverdueAccoun
 import { startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns";
 import { DueStatus, LoanStatus, MessageType } from "@prisma/client";
 import { buildBalanceReminderLink, buildDueReminderLink, buildPaymentReceiptLink, getTemplate } from "@/features/whatsapp";
-import { calculateLoanSummary } from "@/features/interest-engine";
+import {
+  calculateEffectivePrincipal,
+  calculateLoanSummary,
+} from "@/features/interest-engine";
 
 type DashboardData = {
   stats: DashboardStats;
@@ -63,6 +66,7 @@ export async function recordPaymentAction(input: RecordPaymentInput): Promise<{
       const summary = calculateLoanSummary({
         originalPrincipal: Number(updatedLoan.principalAmount),
         currentPrincipal: Number(updatedLoan.currentPrincipal),
+        interestType: updatedLoan.interestType,
         asOfDate: input.paymentDate,
         dues: updatedLoan.interestDues.map((due) => ({
           dueAmount: Number(due.dueAmount),
@@ -71,6 +75,7 @@ export async function recordPaymentAction(input: RecordPaymentInput): Promise<{
           status: due.status,
           penaltyAmount: Number(due.penaltyAmount),
           dueDate: due.dueDate,
+          wasCompounded: due.wasCompounded,
         })),
       });
       receiptWhatsappLink = await buildPaymentReceiptLink({
@@ -83,6 +88,10 @@ export async function recordPaymentAction(input: RecordPaymentInput): Promise<{
         receiptNumber: result.receiptNumber,
         remainingBalance: summary.pendingInterest + summary.overdueInterest,
         allocationDetails: result.allocationDetails,
+        interestType:
+          updatedLoan.interestType === "COMPOUND"
+            ? "Compound Interest"
+            : "Simple Interest",
       });
     }
 
@@ -128,6 +137,10 @@ async function mapTodayCollections(
             amount: remainingAmount,
             dueDate: due.dueDate,
             loanNumber: due.loan.loanNumber,
+            interestType:
+              due.loan.interestType === "COMPOUND"
+                ? "Compound Interest"
+                : "Simple Interest",
           },
           templateOverride
         ),
@@ -142,7 +155,11 @@ async function mapOverdueAccounts(
 ): Promise<OverdueAccount[]> {
   const byBorrower = new Map<
     string,
-    OverdueAccount & { principalOutstanding: number; loanIds: Set<string> }
+    OverdueAccount & {
+      principalOutstanding: number;
+      capitalizedInterest: number;
+      loanIds: Set<string>;
+    }
   >();
 
   for (const due of overdueDues) {
@@ -156,6 +173,7 @@ async function mapOverdueAccounts(
     if (byBorrower.has(key)) {
       const existing = byBorrower.get(key)!;
       existing.totalOverdue += outstanding;
+      if (due.wasCompounded) existing.capitalizedInterest += outstanding;
       if (!existing.loanIds.has(due.loanId)) {
         existing.principalOutstanding += Number(due.loan.currentPrincipal);
         existing.loanIds.add(due.loanId);
@@ -174,7 +192,9 @@ async function mapOverdueAccounts(
         totalOverdue: outstanding,
         daysOverdue,
         overdueCount: 1,
+        interestType: due.loan.interestType,
         principalOutstanding: Number(due.loan.currentPrincipal),
+        capitalizedInterest: due.wasCompounded ? outstanding : 0,
         loanIds: new Set([due.loanId]),
       });
     }
@@ -183,16 +203,20 @@ async function mapOverdueAccounts(
   const accounts = Array.from(byBorrower.values()).sort((a, b) => b.daysOverdue - a.daysOverdue);
 
   return Promise.all(
-    accounts.map(async ({ principalOutstanding, loanIds, ...account }) => ({
+    accounts.map(async ({ principalOutstanding, capitalizedInterest, loanIds, ...account }) => ({
       ...account,
       whatsappLink: await buildBalanceReminderLink(
         {
           phone: account.mobile,
           borrowerName: account.borrowerName,
           loanNumber: account.loanNumber,
-          principal: principalOutstanding,
-          pendingInterest: account.totalOverdue,
+          principal: principalOutstanding + capitalizedInterest,
+          pendingInterest: account.totalOverdue - capitalizedInterest,
           totalOutstanding: principalOutstanding + account.totalOverdue,
+          interestType:
+            account.interestType === "COMPOUND"
+              ? "Compound Interest"
+              : "Simple Interest",
         },
         templateOverride
       ),
@@ -328,7 +352,21 @@ export async function getDashboardStatsAction(): Promise<DashboardStats> {
         status: LoanStatus.ACTIVE,
         borrower: { userId: session.id },
       },
-      select: { currentPrincipal: true, interestRate: true, loanFrequency: true },
+      select: {
+        currentPrincipal: true,
+        interestRate: true,
+        interestType: true,
+        loanFrequency: true,
+        interestDues: {
+          where: { wasCompounded: true },
+          select: {
+            dueAmount: true,
+            paidAmount: true,
+            waivedAmount: true,
+            wasCompounded: true,
+          },
+        },
+      },
     }),
     prisma.loan.count({
       where: { status: LoanStatus.CLOSED, borrower: { userId: session.id } },
@@ -373,7 +411,18 @@ export async function getDashboardStatsAction(): Promise<DashboardStats> {
   ]);
 
   const totalPrincipalLent = activeLoans.reduce(
-    (sum, l) => sum + Number(l.currentPrincipal),
+    (sum, l) =>
+      sum +
+      calculateEffectivePrincipal(
+        Number(l.currentPrincipal),
+        l.interestType,
+        (l.interestDues || []).map((due) => ({
+          dueAmount: Number(due.dueAmount),
+          paidAmount: Number(due.paidAmount),
+          waivedAmount: Number(due.waivedAmount),
+          wasCompounded: due.wasCompounded,
+        }))
+      ),
     0
   );
 
@@ -438,7 +487,21 @@ export async function getDashboardDataAction(): Promise<DashboardData> {
         status: LoanStatus.ACTIVE,
         borrower: { userId: session.id },
       },
-      select: { currentPrincipal: true, interestRate: true, loanFrequency: true },
+      select: {
+        currentPrincipal: true,
+        interestRate: true,
+        interestType: true,
+        loanFrequency: true,
+        interestDues: {
+          where: { wasCompounded: true },
+          select: {
+            dueAmount: true,
+            paidAmount: true,
+            waivedAmount: true,
+            wasCompounded: true,
+          },
+        },
+      },
     }),
     prisma.loan.count({
       where: { status: LoanStatus.CLOSED, borrower: { userId: session.id } },
@@ -493,7 +556,18 @@ export async function getDashboardDataAction(): Promise<DashboardData> {
   ]);
 
   const totalPrincipalLent = activeLoans.reduce(
-    (sum, l) => sum + Number(l.currentPrincipal),
+    (sum, l) =>
+      sum +
+      calculateEffectivePrincipal(
+        Number(l.currentPrincipal),
+        l.interestType,
+        (l.interestDues || []).map((due) => ({
+          dueAmount: Number(due.dueAmount),
+          paidAmount: Number(due.paidAmount),
+          waivedAmount: Number(due.waivedAmount),
+          wasCompounded: due.wasCompounded,
+        }))
+      ),
     0
   );
   const monthlyExpectedInterest = monthDues.reduce(

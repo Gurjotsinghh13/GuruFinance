@@ -22,9 +22,13 @@ export function StatementClient({ borrower, loansWithSummary, whatsappLink }: Pr
 
   const grandTotals = loansWithSummary.reduce(
     (acc, { loan, summary }) => ({
-      principal: acc.principal + Number(loan.currentPrincipal),
+      principal: acc.principal + summary.effectivePrincipal,
       received: acc.received + summary.totalInterestReceived,
-      pending: acc.pending + summary.pendingInterest + summary.overdueInterest,
+      pending:
+        acc.pending +
+        summary.pendingInterest +
+        summary.overdueInterest -
+        summary.capitalizedInterest,
     }),
     { principal: 0, received: 0, pending: 0 }
   );
@@ -132,14 +136,22 @@ export function StatementClient({ borrower, loansWithSummary, whatsappLink }: Pr
             </div>
 
             {/* Loan details row */}
-            <div className="grid grid-cols-3 gap-2 text-xs mb-3">
+            <div className="grid grid-cols-4 gap-2 text-xs mb-3">
               <div className="rounded bg-gray-50 p-2">
-                <p className="text-gray-400">Principal</p>
-                <p className="font-semibold tabular-nums">{formatCurrency(Number(loan.currentPrincipal))}</p>
+                <p className="text-gray-400">
+                  {loan.interestType === "COMPOUND" ? "Effective Principal" : "Principal"}
+                </p>
+                <p className="font-semibold tabular-nums">{formatCurrency(summary.effectivePrincipal)}</p>
               </div>
               <div className="rounded bg-gray-50 p-2">
                 <p className="text-gray-400">Rate</p>
                 <p className="font-semibold">{Number(loan.interestRate)}%/{loan.loanFrequency === "MONTHLY" ? "mo" : "day"}</p>
+              </div>
+              <div className="rounded bg-gray-50 p-2">
+                <p className="text-gray-400">Interest Type</p>
+                <p className="font-semibold">
+                  {loan.interestType === "COMPOUND" ? "Compound" : "Simple"}
+                </p>
               </div>
               <div className="rounded bg-gray-50 p-2">
                 <p className="text-gray-400">Received</p>

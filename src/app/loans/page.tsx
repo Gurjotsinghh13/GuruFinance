@@ -3,6 +3,7 @@ import { LoanStatus } from "@prisma/client";
 import Link from "next/link";
 import { PlusCircle } from "lucide-react";
 import { formatCurrency, formatDate, formatPercent } from "@/utils";
+import { calculateEffectivePrincipal } from "@/features/interest-engine";
 
 interface Props {
   searchParams: Promise<{ status?: string }>;
@@ -63,6 +64,16 @@ export default async function LoansPage({ searchParams }: Props) {
       {/* Loans list */}
       <div className="space-y-2">
         {loans.map((loan) => {
+          const effectivePrincipal = calculateEffectivePrincipal(
+            Number(loan.currentPrincipal),
+            loan.interestType,
+            loan.interestDues.map((due) => ({
+              dueAmount: Number(due.dueAmount),
+              paidAmount: Number(due.paidAmount),
+              waivedAmount: Number(due.waivedAmount),
+              wasCompounded: due.wasCompounded,
+            }))
+          );
           const pendingDues = loan.interestDues;
           const pendingAmount = pendingDues.reduce(
             (s, d) => s + Number(d.dueAmount) - Number(d.paidAmount),
@@ -90,7 +101,7 @@ export default async function LoansPage({ searchParams }: Props) {
                 </p>
                 <div className="flex items-center gap-3 mt-1">
                   <span className="text-xs text-gray-500 tabular-nums">
-                    {formatCurrency(Number(loan.currentPrincipal))}
+                    {formatCurrency(effectivePrincipal)}
                   </span>
                   <span className="text-xs text-gray-400">
                     {formatPercent(Number(loan.interestRate))}/

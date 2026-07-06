@@ -74,6 +74,10 @@ export default async function CollectionsPage({ searchParams }: Props) {
                 amount: remainingAmount,
                 dueDate: due.dueDate,
                 loanNumber: due.loan.loanNumber,
+                interestType:
+                  due.loan.interestType === "COMPOUND"
+                    ? "Compound Interest"
+                    : "Simple Interest",
               }, dueTemplate)
             : undefined,
       };

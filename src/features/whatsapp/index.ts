@@ -18,6 +18,7 @@ export const DEFAULT_TEMPLATES: Record<MessageType, string> = {
   [MessageType.DUE_REMINDER]: `Dear {{borrowerName}},
 
 Your interest payment of {{amount}} is scheduled for {{dueDate}} for loan {{loanNumber}}.
+Interest Type: {{interestType}}
 
 Please arrange payment on the due date.
 
@@ -28,6 +29,7 @@ Thank you`,
 This is a reminder regarding your outstanding balance:
 
 Loan: {{loanNumber}}
+Interest Type: {{interestType}}
 Principal Outstanding: {{principal}}
 Pending Interest: {{pendingInterest}}
 Total Outstanding: {{totalOutstanding}}
@@ -47,6 +49,7 @@ Date: {{paymentDate}}
 Amount Received: {{amount}}
 Payment Method: {{paymentMethod}}
 Loan Number: {{loanNumber}}
+Interest Type: {{interestType}}
 Remaining Pending Interest: {{remainingBalance}}
 
 Thank you.`,
@@ -56,6 +59,7 @@ Thank you.`,
 Your account statement for loan {{loanNumber}}:
 
 Principal: {{principal}}
+Interest Type: {{interestType}}
 Interest Rate: {{interestRate}}% monthly
 Total Interest Paid: {{totalPaid}}
 Pending Interest: {{pendingInterest}}
@@ -87,6 +91,16 @@ export async function getTemplate(type: MessageType): Promise<string> {
 // TEMPLATE RENDERERS
 // ============================================================
 
+function renderWithInterestType(
+  template: string,
+  variables: Record<string, string>,
+  interestType?: string
+): string {
+  const rendered = fillTemplate(template, variables);
+  if (!interestType || template.includes("{{interestType}}")) return rendered;
+  return `${rendered}\n\nInterest Type: ${interestType}`;
+}
+
 export function renderDueReminderMessage(
   template: string,
   params: {
@@ -94,14 +108,16 @@ export function renderDueReminderMessage(
     amount: number;
     dueDate: Date | string;
     loanNumber: string;
+    interestType?: string;
   }
 ): string {
-  return fillTemplate(template, {
+  return renderWithInterestType(template, {
     borrowerName: params.borrowerName,
     amount: formatCurrency(params.amount),
     dueDate: formatDate(params.dueDate),
     loanNumber: params.loanNumber,
-  });
+    interestType: params.interestType || "Simple Interest",
+  }, params.interestType);
 }
 
 export function renderPaymentReceiptMessage(
@@ -115,10 +131,11 @@ export function renderPaymentReceiptMessage(
     receiptNumber: string;
     remainingBalance: number;
     allocationDetails?: PaymentAllocationDetail[];
+    interestType?: string;
   }
 ): string {
   const allocationDetails = formatAllocationDetails(params.allocationDetails || []);
-  return fillTemplate(template, {
+  return renderWithInterestType(template, {
     borrowerName: params.borrowerName,
     amount: formatCurrency(params.amount),
     paymentDate: formatDate(params.paymentDate),
@@ -127,7 +144,8 @@ export function renderPaymentReceiptMessage(
     receiptNumber: params.receiptNumber,
     remainingBalance: formatCurrency(params.remainingBalance),
     allocationDetails,
-  });
+    interestType: params.interestType || "Simple Interest",
+  }, params.interestType);
 }
 
 export function formatAllocationDetails(allocations: PaymentAllocationDetail[]): string {
@@ -158,15 +176,17 @@ export function renderBalanceReminderMessage(
     principal: number;
     pendingInterest: number;
     totalOutstanding: number;
+    interestType?: string;
   }
 ): string {
-  return fillTemplate(template, {
+  return renderWithInterestType(template, {
     borrowerName: params.borrowerName,
     loanNumber: params.loanNumber,
     principal: formatCurrency(params.principal),
     pendingInterest: formatCurrency(params.pendingInterest),
     totalOutstanding: formatCurrency(params.totalOutstanding),
-  });
+    interestType: params.interestType || "Simple Interest",
+  }, params.interestType);
 }
 
 export function renderAccountStatementMessage(
@@ -179,9 +199,10 @@ export function renderAccountStatementMessage(
     totalPaid: number;
     pendingInterest: number;
     outstandingPrincipal: number;
+    interestType?: string;
   }
 ): string {
-  return fillTemplate(template, {
+  return renderWithInterestType(template, {
     borrowerName: params.borrowerName,
     loanNumber: params.loanNumber,
     principal: formatCurrency(params.principal),
@@ -189,7 +210,8 @@ export function renderAccountStatementMessage(
     totalPaid: formatCurrency(params.totalPaid),
     pendingInterest: formatCurrency(params.pendingInterest),
     outstandingPrincipal: formatCurrency(params.outstandingPrincipal),
-  });
+    interestType: params.interestType || "Simple Interest",
+  }, params.interestType);
 }
 
 // ============================================================
@@ -202,6 +224,7 @@ export async function buildDueReminderLink(params: {
   amount: number;
   dueDate: Date;
   loanNumber: string;
+  interestType?: string;
 }, templateOverride?: string): Promise<string> {
   const template = templateOverride ?? await getTemplate(MessageType.DUE_REMINDER);
   const message = renderDueReminderMessage(template, params);
@@ -222,6 +245,7 @@ export async function buildPaymentReceiptLink(params: {
   receiptNumber: string;
   remainingBalance: number;
   allocationDetails?: PaymentAllocationDetail[];
+  interestType?: string;
 }, templateOverride?: string): Promise<string> {
   const template = templateOverride ?? await getTemplate(MessageType.PAYMENT_RECEIPT);
   const message = renderPaymentReceiptMessage(template, params);
@@ -239,6 +263,7 @@ export async function buildBalanceReminderLink(params: {
   principal: number;
   pendingInterest: number;
   totalOutstanding: number;
+  interestType?: string;
 }, templateOverride?: string): Promise<string> {
   const template = templateOverride ?? await getTemplate(MessageType.BALANCE_REMINDER);
   const message = renderBalanceReminderMessage(template, params);
@@ -258,6 +283,7 @@ export async function buildAccountStatementLink(params: {
   totalPaid: number;
   pendingInterest: number;
   outstandingPrincipal: number;
+  interestType?: string;
 }, templateOverride?: string): Promise<string> {
   const template = templateOverride ?? await getTemplate(MessageType.ACCOUNT_STATEMENT);
   const message = renderAccountStatementMessage(template, params);

@@ -201,12 +201,20 @@ export async function getBorrowersAction(params?: {
             id: true,
             status: true,
             currentPrincipal: true,
+            interestType: true,
             interestDues: {
               where: {
                 status: { in: ["PENDING", "PARTIAL", "OVERDUE"] },
                 dueDate: { lte: today },
               },
-              select: { dueAmount: true, paidAmount: true, waivedAmount: true, status: true, dueDate: true },
+              select: {
+                dueAmount: true,
+                paidAmount: true,
+                waivedAmount: true,
+                status: true,
+                dueDate: true,
+                wasCompounded: true,
+              },
             },
           },
         },

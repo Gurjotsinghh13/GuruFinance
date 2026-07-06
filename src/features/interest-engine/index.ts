@@ -233,6 +233,43 @@ export function calculateCompoundedPrincipal(
   return roundCurrency(currentPrincipal + unpaidInterest);
 }
 
+export type CompoundedDueInput = {
+  dueAmount: number;
+  paidAmount: number;
+  waivedAmount: number;
+  wasCompounded?: boolean;
+};
+
+export function calculateCapitalizedInterest(
+  dues: CompoundedDueInput[]
+): number {
+  return roundCurrency(
+    dues.reduce((total, due) => {
+      if (!due.wasCompounded) return total;
+      const outstanding = Math.max(
+        0,
+        due.dueAmount - due.paidAmount - due.waivedAmount
+      );
+      return total + outstanding;
+    }, 0)
+  );
+}
+
+export function calculateEffectivePrincipal(
+  currentPrincipal: number,
+  interestType: InterestType,
+  dues: CompoundedDueInput[]
+): number {
+  if (interestType !== InterestType.COMPOUND) {
+    return roundCurrency(currentPrincipal);
+  }
+
+  return calculateCompoundedPrincipal(
+    currentPrincipal,
+    calculateCapitalizedInterest(dues)
+  );
+}
+
 // ============================================================
 // OUTSTANDING BALANCE CALCULATOR
 // Given a loan, calculates total outstanding.
@@ -337,6 +374,7 @@ export function allocatePayment(
 export type LoanSummaryInput = {
   originalPrincipal: number;
   currentPrincipal: number;
+  interestType?: InterestType;
   asOfDate?: Date;
   dues: {
     dueAmount: number;
@@ -345,6 +383,7 @@ export type LoanSummaryInput = {
     status: string;
     penaltyAmount: number;
     dueDate?: Date | string;
+    wasCompounded?: boolean;
   }[];
 };
 
@@ -354,6 +393,8 @@ export type LoanSummaryOutput = {
   pendingInterest: number;
   overdueInterest: number;
   totalPenalties: number;
+  capitalizedInterest: number;
+  effectivePrincipal: number;
   collectionRate: number; // 0-100 percentage
 };
 
@@ -391,6 +432,10 @@ export function calculateLoanSummary(input: LoanSummaryInput): LoanSummaryOutput
     totalInterestCharged > 0
       ? (totalInterestReceived / totalInterestCharged) * 100
       : 0;
+  const capitalizedInterest =
+    input.interestType === InterestType.COMPOUND
+      ? calculateCapitalizedInterest(input.dues)
+      : 0;
 
   return {
     totalInterestCharged: roundCurrency(totalInterestCharged),
@@ -398,6 +443,12 @@ export function calculateLoanSummary(input: LoanSummaryInput): LoanSummaryOutput
     pendingInterest: roundCurrency(pendingInterest),
     overdueInterest: roundCurrency(overdueInterest),
     totalPenalties: roundCurrency(totalPenalties),
+    capitalizedInterest,
+    effectivePrincipal: calculateEffectivePrincipal(
+      input.currentPrincipal,
+      input.interestType || InterestType.SIMPLE,
+      input.dues
+    ),
     collectionRate: Math.round(collectionRate * 10) / 10,
   };
 }

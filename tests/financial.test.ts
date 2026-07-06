@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
 import { startOfDay, subDays } from "date-fns";
-import { DueStatus, LoanFrequency, LoanStatus, MessageType, PaymentMethod } from "@prisma/client";
+import { CompoundingRule, DueStatus, InterestType, LoanFrequency, LoanStatus, MessageType, PaymentMethod } from "@prisma/client";
 import {
   allocatePayment,
+  calculateCapitalizedInterest,
+  calculateEffectivePrincipal,
   calculateLoanSummary,
   calculatePeriodDue,
   dailyInterestAmount,
@@ -427,6 +430,28 @@ describe("WhatsApp template rendering", () => {
     assert.equal(linkFromPreloadedTemplate, linkFromSettings);
     assert.equal(templateLookups, 1);
   });
+
+  it("adds interest type to legacy saved templates without changing their stored content", () => {
+    const { renderBalanceReminderMessage } = loadWhatsAppFeature({
+      settings: { findUnique: async () => null },
+    });
+    const message = renderBalanceReminderMessage(
+      "Loan {{loanNumber}} outstanding {{totalOutstanding}}",
+      {
+        borrowerName: "Rahul Sharma",
+        loanNumber: "LN-COMPOUND",
+        principal: 105000,
+        pendingInterest: 0,
+        totalOutstanding: 105000,
+        interestType: "Compound Interest",
+      }
+    );
+
+    assert.equal(
+      message,
+      "Loan LN-COMPOUND outstanding ₹1,05,000\n\nInterest Type: Compound Interest"
+    );
+  });
 });
 
 describe("financial calculations", () => {
@@ -530,6 +555,86 @@ describe("financial calculations", () => {
     ]);
     assert.equal(finalPayment.totalAllocated, 500);
     assert.equal(finalPayment.unallocated, 300);
+  });
+
+  it("derives compound effective principal only from unpaid capitalized interest", () => {
+    const dues = [
+      {
+        dueAmount: 5000,
+        paidAmount: 0,
+        waivedAmount: 0,
+        wasCompounded: true,
+      },
+      {
+        dueAmount: 5250,
+        paidAmount: 1000,
+        waivedAmount: 0,
+        wasCompounded: false,
+      },
+    ];
+
+    assert.equal(calculateCapitalizedInterest(dues), 5000);
+    assert.equal(
+      calculateEffectivePrincipal(100000, InterestType.COMPOUND, dues),
+      105000
+    );
+    assert.equal(
+      calculateEffectivePrincipal(100000, InterestType.SIMPLE, dues),
+      100000
+    );
+  });
+
+  it("reduces effective principal when a capitalized due is partially paid", () => {
+    const dues = [
+      {
+        dueAmount: 5000,
+        paidAmount: 2000,
+        waivedAmount: 0,
+        wasCompounded: true,
+      },
+    ];
+
+    assert.equal(calculateCapitalizedInterest(dues), 3000);
+    assert.equal(
+      calculateEffectivePrincipal(100000, InterestType.COMPOUND, dues),
+      103000
+    );
+  });
+
+  it("compounds multiple unpaid months and excludes fully paid interest", () => {
+    const unpaidMonths = [
+      { dueAmount: 5000, paidAmount: 0, waivedAmount: 0, wasCompounded: true },
+      { dueAmount: 5250, paidAmount: 0, waivedAmount: 0, wasCompounded: true },
+    ];
+    const effectivePrincipal = calculateEffectivePrincipal(
+      100000,
+      InterestType.COMPOUND,
+      unpaidMonths
+    );
+
+    assert.equal(effectivePrincipal, 110250);
+    assert.equal(monthlyInterestAmount(effectivePrincipal, 5), 5512.5);
+    assert.equal(
+      calculateEffectivePrincipal(100000, InterestType.COMPOUND, [
+        { dueAmount: 5000, paidAmount: 5000, waivedAmount: 0, wasCompounded: true },
+      ]),
+      100000
+    );
+  });
+
+  it("combines reduced or topped-up base principal with previously capitalized interest", () => {
+    const capitalizedDue = [
+      { dueAmount: 5000, paidAmount: 1000, waivedAmount: 0, wasCompounded: true },
+    ];
+
+    assert.equal(
+      calculateEffectivePrincipal(75000, InterestType.COMPOUND, capitalizedDue),
+      79000
+    );
+    assert.equal(
+      calculateEffectivePrincipal(125000, InterestType.COMPOUND, capitalizedDue),
+      129000
+    );
   });
 });
 
@@ -682,6 +787,7 @@ describe("loan creation and borrower ledger workflows", () => {
     assert.equal(createdLoans[0].data.loanNumber, "LN-2026-1001");
     assert.equal(createdLoans[0].data.principalAmount, 100000);
     assert.equal(createdLoans[0].data.currentPrincipal, 100000);
+    assert.equal(createdLoans[0].data.interestType, InterestType.SIMPLE);
     assert.equal(transactions[0].data.type, "PRINCIPAL_DISBURSEMENT");
     assert.equal(transactions[0].data.principalBefore, 0);
     assert.equal(transactions[0].data.principalAfter, 100000);
@@ -690,6 +796,50 @@ describe("loan creation and borrower ledger workflows", () => {
     assert.deepEqual(revalidated, ["/borrowers/borrower-1", "/loans"]);
   });
 
+  it("persists COMPOUND exactly when selected", async () => {
+    const createdLoans: any[] = [];
+    const mockPrisma = {
+      borrower: {
+        findFirst: async () => ({ id: "borrower-1", userId: "user-1" }),
+      },
+      loan: {
+        create: async (args: any) => {
+          createdLoans.push(args);
+          return { id: "loan-compound", ...args.data };
+        },
+      },
+      loanTransaction: { create: async (args: any) => args.data },
+      auditLog: { create: async (args: any) => args.data },
+    };
+
+    const { createLoanAction } = loadLoanActions(mockPrisma, {
+      generateDuesForLoan: async () => ({ generated: 3, errors: [] }),
+    });
+    const result = await createLoanAction({
+      borrowerId: "borrower-1",
+      principalAmount: 100000,
+      interestRate: 5,
+      interestType: InterestType.COMPOUND,
+      loanFrequency: LoanFrequency.MONTHLY,
+      compoundingRule: CompoundingRule.MONTHLY,
+      startDate: new Date("2026-07-01"),
+      dueDay: 1,
+    });
+
+    assert.deepEqual(result, { loanId: "loan-compound" });
+    assert.equal(createdLoans[0].data.interestType, InterestType.COMPOUND);
+    assert.equal(createdLoans[0].data.compoundingRule, CompoundingRule.MONTHLY);
+  });
+
+  it("submits the selected loan form state instead of a stale default radio value", () => {
+    const source = readFileSync(
+      require.resolve("../src/app/loans/new/page.tsx"),
+      "utf8"
+    );
+
+    assert.match(source, /interestType,\s*\n\s*loanFrequency/);
+    assert.doesNotMatch(source, /fd\.get\("interestType"\)/);
+  });
   it("loads multiple loans for the same borrower without mixing other users' records", async () => {
     const mockPrisma = {
       borrower: {
@@ -794,7 +944,11 @@ describe("principal workflows", () => {
     assert.equal(updates[0].data.currentPrincipal, 75000);
     assert.equal(updates[0].data.status, LoanStatus.ACTIVE);
     assert.deepEqual(dueCalls, [
-      { type: "regenerate", loanId: "loan-1", fromDate: repaymentDate },
+      {
+        type: "regenerate",
+        loanId: "loan-1",
+        fromDate: startOfDay(new Date("2026-03-11")),
+      },
     ]);
     assert.equal(auditLogs[0].data.details.loanClosed, false);
   });
@@ -868,6 +1022,57 @@ describe("principal workflows", () => {
       ]
     );
     assert.equal(existingDueChecks.length, 3);
+  });
+
+  it("uses reduced base principal plus capitalized interest for future compound dues", async () => {
+    const createdDues: any[] = [];
+    const repaymentDate = new Date("2026-06-15");
+    const historicalDue = {
+      id: "compounded-june",
+      loanId: "loan-compound",
+      dueDate: new Date("2026-06-01"),
+      dueAmount: 5000,
+      paidAmount: 1000,
+      waivedAmount: 0,
+      status: DueStatus.OVERDUE,
+      wasCompounded: true,
+    };
+    const loan = {
+      id: "loan-compound",
+      status: LoanStatus.ACTIVE,
+      currentPrincipal: 75000,
+      interestRate: 5,
+      interestType: InterestType.COMPOUND,
+      loanFrequency: LoanFrequency.MONTHLY,
+      dueDay: 1,
+      startDate: new Date("2026-01-01"),
+      interestDues: [historicalDue],
+    };
+    const mockPrisma = {
+      loan: { findUnique: async () => loan },
+      interestDue: {
+        deleteMany: async () => ({ count: 1 }),
+        findFirst: async () => null,
+        create: async (args: any) => {
+          createdDues.push(args.data);
+          return args.data;
+        },
+        update: async (args: any) => args.data,
+      },
+    };
+
+    const { regenerateFutureDues } = loadDueEngine(mockPrisma);
+    await regenerateFutureDues(
+      "loan-compound",
+      repaymentDate,
+      new Date("2026-07-01")
+    );
+
+    assert.equal(createdDues.length, 1);
+    assert.equal(createdDues[0].principalAtTime, 79000);
+    assert.equal(createdDues[0].dueAmount, 3950);
+    assert.equal(historicalDue.dueAmount, 5000);
+    assert.equal(historicalDue.paidAmount, 1000);
   });
 
   it("recalculates future partial dues after principal repayment while preserving paid amounts", async () => {
@@ -1038,7 +1243,9 @@ describe("principal workflows", () => {
     assert.equal(transactions[0].data.principalBefore, 75000);
     assert.equal(transactions[0].data.principalAfter, 100000);
     assert.equal(updates[0].data.currentPrincipal, 100000);
-    assert.deepEqual(dueCalls, [{ loanId: "loan-2", fromDate: topUpDate }]);
+    assert.deepEqual(dueCalls, [
+      { loanId: "loan-2", fromDate: startOfDay(new Date("2026-04-06")) },
+    ]);
   });
 
   it("closes a loan after full principal repayment and stops future due generation", async () => {
@@ -1090,6 +1297,53 @@ describe("principal workflows", () => {
     assert.ok(updates[0].data.closedAt instanceof Date);
     assert.deepEqual(dueCalls, [{ type: "stop", loanId: "loan-3" }]);
   });
+
+  it("keeps a compound loan open while capitalized interest remains unpaid", async () => {
+    const updates: any[] = [];
+    const dueCalls: any[] = [];
+    const mockPrisma = {
+      $transaction: async (callback: any) => callback(mockPrisma),
+      loan: {
+        findUnique: async () => ({
+          id: "loan-compound",
+          currentPrincipal: 50000,
+          interestDues: [
+            {
+              dueAmount: 5000,
+              paidAmount: 0,
+              waivedAmount: 0,
+              wasCompounded: true,
+            },
+          ],
+        }),
+        update: async (args: any) => {
+          updates.push(args);
+          return args.data;
+        },
+      },
+      loanTransaction: { create: async (args: any) => args.data },
+      auditLog: { create: async (args: any) => args.data },
+    };
+    const { recordPrincipalRepayment } = loadPaymentEngine(mockPrisma, {
+      regenerateFutureDues: async (loanId: string) => dueCalls.push(loanId),
+      stopDueGeneration: async () => {
+        throw new Error("Loan must not close with capitalized interest outstanding");
+      },
+    });
+
+    const result = await recordPrincipalRepayment(
+      {
+        loanId: "loan-compound",
+        amount: 50000,
+        repaymentDate: new Date("2026-07-06"),
+      },
+      "user-1"
+    );
+
+    assert.deepEqual(result, { newPrincipal: 0, loanClosed: false });
+    assert.equal(updates[0].data.status, LoanStatus.ACTIVE);
+    assert.deepEqual(dueCalls, ["loan-compound"]);
+  });
 });
 
 describe("overdue detection", () => {
@@ -1130,6 +1384,71 @@ describe("overdue detection", () => {
     assert.equal(updateCalls[0].data.daysOverdue, 3);
     assert.equal(updateCalls[1].where.id, "due-2");
     assert.equal(updateCalls[1].data.daysOverdue, 1);
+  });
+
+  it("capitalizes only unpaid overdue compound interest and preserves historical amounts", async () => {
+    const today = startOfDay(new Date());
+    const overdueDue = {
+      id: "compound-overdue",
+      loanId: "loan-compound",
+      dueDate: subDays(today, 1),
+      dueAmount: 5000,
+      paidAmount: 1000,
+      waivedAmount: 0,
+      status: DueStatus.OVERDUE,
+      wasCompounded: false,
+    };
+    const updates: any[] = [];
+    const deletes: any[] = [];
+
+    const loan = {
+      id: "loan-compound",
+      status: LoanStatus.ACTIVE,
+      currentPrincipal: 100000,
+      interestRate: 5,
+      interestType: InterestType.COMPOUND,
+      loanFrequency: LoanFrequency.MONTHLY,
+      compoundingRule: CompoundingRule.MONTHLY,
+      dueDay: 1,
+      startDate: subDays(today, 32),
+      interestDues: [overdueDue],
+    };
+    const mockPrisma = {
+      loan: {
+        findMany: async () => [loan],
+        findUnique: async () => loan,
+      },
+      interestDue: {
+        update: async (args: any) => {
+          updates.push(args);
+          overdueDue.wasCompounded = true;
+          return { ...overdueDue, ...args.data };
+        },
+        deleteMany: async (args: any) => {
+          deletes.push(args);
+          return { count: 2 };
+        },
+        findFirst: async () => ({ id: "existing-future-due" }),
+        create: async () => {
+          throw new Error("Existing future dues should prevent duplicate creation");
+        },
+      },
+    };
+
+    const { capitalizeOverdueInterest } = loadDueEngine(mockPrisma);
+    const result = await capitalizeOverdueInterest(today);
+
+    assert.deepEqual(result, { capitalized: 1, loansUpdated: 1 });
+    assert.deepEqual(updates[0].where, { id: "compound-overdue" });
+    assert.equal(updates[0].data.wasCompounded, true);
+    assert.equal(updates[0].data.compoundedAt, today);
+    assert.equal("dueAmount" in updates[0].data, false);
+    assert.equal("paidAmount" in updates[0].data, false);
+    assert.deepEqual(deletes[0].where, {
+      loanId: "loan-compound",
+      dueDate: { gte: startOfDay(new Date(today.getTime() + 24 * 60 * 60 * 1000)) },
+      status: DueStatus.PENDING,
+    });
   });
 });
 
@@ -1309,8 +1628,27 @@ describe("dashboard statistics", () => {
         findMany: async () => {
           queryCounts.loanFindMany += 1;
           return [
-            { currentPrincipal: 100000, interestRate: 3, loanFrequency: LoanFrequency.MONTHLY },
-            { currentPrincipal: 50000, interestRate: 2, loanFrequency: LoanFrequency.MONTHLY },
+            {
+              currentPrincipal: 100000,
+              interestRate: 3,
+              interestType: InterestType.COMPOUND,
+              loanFrequency: LoanFrequency.MONTHLY,
+              interestDues: [
+                {
+                  dueAmount: 5000,
+                  paidAmount: 0,
+                  waivedAmount: 0,
+                  wasCompounded: true,
+                },
+              ],
+            },
+            {
+              currentPrincipal: 50000,
+              interestRate: 2,
+              interestType: InterestType.SIMPLE,
+              loanFrequency: LoanFrequency.MONTHLY,
+              interestDues: [],
+            },
           ];
         },
         count: async () => {
@@ -1382,7 +1720,7 @@ describe("dashboard statistics", () => {
       paymentFindMany: 1,
       settingsFindUnique: 2,
     });
-    assert.equal(dashboard.stats.totalPrincipalLent, 150000);
+    assert.equal(dashboard.stats.totalPrincipalLent, 155000);
     assert.equal(dashboard.stats.closedLoanCount, 1);
     assert.equal(dashboard.stats.activeBorrowerCount, 1);
     assert.equal(dashboard.stats.monthlyExpectedInterest, 6000);
@@ -1940,6 +2278,62 @@ describe("interest payment recording", () => {
     assert.equal(dueUpdates[0].data.status, DueStatus.PARTIAL);
   });
 
+  it("regenerates future compound dues after paying capitalized interest", async () => {
+    const regenerationCalls: any[] = [];
+    const paymentDate = new Date("2026-06-15");
+    const mockPrisma = {
+      $transaction: async (callback: any) => callback(mockPrisma),
+      interestDue: {
+        findMany: async () => [
+          {
+            id: "capitalized-due",
+            dueDate: new Date("2026-06-05"),
+            periodStart: new Date("2026-05-05"),
+            periodEnd: new Date("2026-06-05"),
+            dueAmount: 5000,
+            paidAmount: 0,
+            waivedAmount: 0,
+            status: DueStatus.OVERDUE,
+            wasCompounded: true,
+          },
+        ],
+        update: async (args: any) => args.data,
+      },
+      payment: {
+        create: async (args: any) => ({
+          id: "payment-capitalized",
+          receiptNumber: "RCT-COMPOUND",
+          ...args.data,
+        }),
+      },
+      paymentAllocation: { create: async (args: any) => args.data },
+      auditLog: { create: async (args: any) => args.data },
+    };
+
+    const { recordPayment } = loadPaymentEngine(mockPrisma, {
+      regenerateFutureDues: async (loanId: string, fromDate: Date) => {
+        regenerationCalls.push({ loanId, fromDate });
+      },
+      stopDueGeneration: async () => undefined,
+    });
+    await recordPayment(
+      {
+        loanId: "loan-compound",
+        amount: 2000,
+        paymentDate,
+        paymentMethod: PaymentMethod.CASH,
+      },
+      "user-1"
+    );
+
+    assert.equal(regenerationCalls.length, 1);
+    assert.equal(regenerationCalls[0].loanId, "loan-compound");
+    assert.equal(
+      regenerationCalls[0].fromDate.getTime(),
+      startOfDay(new Date("2026-06-16")).getTime()
+    );
+  });
+
   it("does not allocate payments to future dues before they become collectible", async () => {
     const allocations: any[] = [];
     const paymentDate = new Date("2026-06-20");
@@ -2062,7 +2456,7 @@ describe("interest payment recording", () => {
     assert.equal(url.pathname, "/919876543210");
     assert.equal(
       url.searchParams.get("text"),
-      "Dear Gurjot Singh\nInterest Period: July 2026\nDue Date: 15 Jul 2026\nAmount Allocated: \u20b93,000\nReceipt RCT-20260715-7007 15 Jul 2026 \u20b93,000 CASH LN-2026-7007 Remaining \u20b90"
+      "Dear Gurjot Singh\nInterest Period: July 2026\nDue Date: 15 Jul 2026\nAmount Allocated: \u20b93,000\nReceipt RCT-20260715-7007 15 Jul 2026 \u20b93,000 CASH LN-2026-7007 Remaining \u20b90\n\nInterest Type: Simple Interest"
     );
     assert.ok(revalidated.includes("/collections"));
     assert.ok(revalidated.includes("/dashboard"));

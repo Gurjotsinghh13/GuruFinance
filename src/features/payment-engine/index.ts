@@ -13,6 +13,7 @@ import { regenerateFutureDues, stopDueGeneration } from "@/features/due-engine";
 import { roundCurrency } from "@/features/interest-engine";
 import type { RecordPaymentInput, PrincipalRepaymentInput, LoanTopUpInput, PaymentAllocationDetail } from "@/types";
 import { generateReceiptNumber, generateLoanNumber } from "@/utils";
+import { addDays, startOfDay } from "date-fns";
 
 // ============================================================
 // RECORD INTEREST PAYMENT
@@ -32,7 +33,7 @@ export async function recordPayment(
   unallocated: number;
   allocationDetails: PaymentAllocationDetail[];
 }> {
-  return await prisma.$transaction(async (tx) => {
+  const transactionResult = await prisma.$transaction(async (tx) => {
     // Get all pending/partial/overdue dues for this loan
     const dues = await tx.interestDue.findMany({
       where: {
@@ -196,8 +197,21 @@ export async function recordPayment(
       allocated: allocationResult.totalAllocated,
       unallocated: allocationResult.unallocated,
       allocationDetails,
+      compoundedInterestPaid: allocationResult.allocations.some((allocation) =>
+        dues.some((due) => due.id === allocation.dueId && due.wasCompounded)
+      ),
     };
   });
+
+  if (transactionResult.compoundedInterestPaid) {
+    await regenerateFutureDues(
+      input.loanId,
+      addDays(startOfDay(input.paymentDate), 1)
+    );
+  }
+
+  const { compoundedInterestPaid, ...result } = transactionResult;
+  return result;
 }
 
 // ============================================================
@@ -215,6 +229,7 @@ export async function recordPrincipalRepayment(
   const result = await prisma.$transaction(async (tx) => {
     const loan = await tx.loan.findUnique({
       where: { id: input.loanId },
+      include: { interestDues: true },
     });
 
     if (!loan) throw new Error("Loan not found");
@@ -227,7 +242,19 @@ export async function recordPrincipalRepayment(
     }
 
     const newPrincipal = roundCurrency(currentPrincipal - input.amount);
-    const loanClosed = newPrincipal === 0;
+    const repaymentDay = startOfDay(input.repaymentDate);
+    const outstandingInterest = (loan.interestDues || [])
+      .filter((due) => !due.dueDate || startOfDay(due.dueDate) <= repaymentDay)
+      .reduce(
+      (total, due) =>
+        total +
+        Math.max(
+          0,
+          Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount)
+        ),
+        0
+      );
+    const loanClosed = newPrincipal === 0 && roundCurrency(outstandingInterest) === 0;
 
     // Record transaction
     await tx.loanTransaction.create({
@@ -276,7 +303,10 @@ export async function recordPrincipalRepayment(
     if (result.loanClosed) {
       await stopDueGeneration(input.loanId);
     } else {
-      await regenerateFutureDues(input.loanId, input.repaymentDate);
+      await regenerateFutureDues(
+        input.loanId,
+        addDays(startOfDay(input.repaymentDate), 1)
+      );
     }
   }
 
@@ -334,7 +364,10 @@ export async function recordLoanTopUp(
   });
 
   // Regenerate future dues with new principal
-  await regenerateFutureDues(input.loanId, input.topUpDate);
+  await regenerateFutureDues(
+    input.loanId,
+    addDays(startOfDay(input.topUpDate), 1)
+  );
 
   return result;
 }

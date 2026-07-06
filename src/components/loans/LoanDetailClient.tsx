@@ -151,7 +151,9 @@ export function LoanDetailClient({ loan, summary, balanceWhatsappLink }: Props) 
               <span className="text-sm text-gray-500">
                 {formatPercent(Number(loan.interestRate))} / {loan.loanFrequency === "MONTHLY" ? "month" : "day"}
               </span>
-              <span className="text-sm text-gray-500">{loan.interestType}</span>
+              <span className="text-sm text-gray-500">
+                {loan.interestType === "COMPOUND" ? "Compound Interest" : "Simple Interest"}
+              </span>
             </div>
             <p className="text-xs text-gray-400 mt-1">Started {formatDate(loan.startDate)}</p>
           </div>
@@ -169,12 +171,24 @@ export function LoanDetailClient({ loan, summary, balanceWhatsappLink }: Props) 
         {/* Financial grid */}
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-lg bg-gray-50 p-3">
-            <p className="text-xs text-gray-500">Current Principal</p>
+            <p className="text-xs text-gray-500">
+              {loan.interestType === "COMPOUND" ? "Base Principal" : "Current Principal"}
+            </p>
             <p className="text-lg font-bold text-gray-900 tabular-nums">
               {formatCurrency(Number(loan.currentPrincipal))}
             </p>
             {Number(loan.currentPrincipal) !== Number(loan.principalAmount) && (
               <p className="text-xs text-gray-400">orig. {formatCurrency(Number(loan.principalAmount))}</p>
+            )}
+            {loan.interestType === "COMPOUND" && (
+              <div className="mt-2 space-y-0.5 text-xs">
+                <p className="text-gray-500">
+                  Capitalized Interest: {formatCurrency(summary.capitalizedInterest)}
+                </p>
+                <p className="font-semibold text-gray-800">
+                  Effective Principal: {formatCurrency(summary.effectivePrincipal)}
+                </p>
+              </div>
             )}
           </div>
           <div className="rounded-lg bg-emerald-50 p-3">

@@ -39,6 +39,7 @@ export default async function LoanDetailPage({ params }: Props) {
   const summary = calculateLoanSummary({
     originalPrincipal: Number(loan.principalAmount),
     currentPrincipal: Number(loan.currentPrincipal),
+    interestType: loan.interestType,
     dues: loan.interestDues.map((d) => ({
       dueAmount: Number(d.dueAmount),
       paidAmount: Number(d.paidAmount),
@@ -46,16 +47,20 @@ export default async function LoanDetailPage({ params }: Props) {
       status: d.status,
       penaltyAmount: Number(d.penaltyAmount),
       dueDate: d.dueDate,
+      wasCompounded: d.wasCompounded,
     })),
   });
   const balanceWhatsappLink = await buildBalanceReminderLink({
     phone: loan.borrower.mobile,
     borrowerName: loan.borrower.fullName,
     loanNumber: loan.loanNumber,
-    principal: Number(loan.currentPrincipal),
-    pendingInterest: summary.pendingInterest + summary.overdueInterest,
+    principal: summary.effectivePrincipal,
+    pendingInterest:
+      summary.pendingInterest + summary.overdueInterest - summary.capitalizedInterest,
     totalOutstanding:
       Number(loan.currentPrincipal) + summary.pendingInterest + summary.overdueInterest,
+    interestType:
+      loan.interestType === "COMPOUND" ? "Compound Interest" : "Simple Interest",
   });
 
   return (

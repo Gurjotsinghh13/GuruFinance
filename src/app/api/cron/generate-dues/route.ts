@@ -4,7 +4,11 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { generateDuesForAllLoans, updateOverdueStatus } from "@/features/due-engine";
+import {
+  capitalizeOverdueInterest,
+  generateDuesForAllLoans,
+  updateOverdueStatus,
+} from "@/features/due-engine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,19 +24,24 @@ export async function GET(request: NextRequest) {
   console.log("[CRON] Starting nightly due generation...");
 
   try {
-    // 1. Generate dues for all active loans (3 months rolling)
-    const dueResult = await generateDuesForAllLoans();
-    console.log(`[CRON] Generated ${dueResult.totalGenerated} dues for ${dueResult.processed} loans`);
-
-    // 2. Update overdue statuses
+    // 1. Mark past dues overdue before calculating compound principal.
     const overdueResult = await updateOverdueStatus();
     console.log(`[CRON] Marked ${overdueResult.updated} dues as overdue`);
+
+    // 2. Capitalize eligible unpaid interest and refresh future dues only.
+    const capitalizationResult = await capitalizeOverdueInterest();
+    console.log(`[CRON] Capitalized ${capitalizationResult.capitalized} overdue dues`);
+
+    // 3. Extend the rolling due window after capitalization is current.
+    const dueResult = await generateDuesForAllLoans();
+    console.log(`[CRON] Generated ${dueResult.totalGenerated} dues for ${dueResult.processed} loans`);
 
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
       dueGeneration: dueResult,
       overdueUpdate: overdueResult,
+      capitalization: capitalizationResult,
     });
   } catch (error) {
     console.error("[CRON] Error:", error);

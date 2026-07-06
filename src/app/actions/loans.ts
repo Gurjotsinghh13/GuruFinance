@@ -98,11 +98,31 @@ export async function closeLoanAction(
 
   const loan = await prisma.loan.findUnique({
     where: { id: loanId },
-    include: { borrower: true },
+    include: { borrower: true, interestDues: true },
   });
 
   if (!loan || loan.borrower.userId !== session.id) {
     return { error: "Loan not found" };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const outstandingInterest = loan.interestDues
+    .filter((due) => due.dueDate <= today)
+    .reduce(
+      (total, due) =>
+        total +
+        Math.max(
+          0,
+          Number(due.dueAmount) - Number(due.paidAmount) - Number(due.waivedAmount)
+        ),
+      0
+    );
+
+  if (Number(loan.currentPrincipal) > 0 || outstandingInterest > 0) {
+    return {
+      error: "Loan cannot be closed until principal and collectible interest are fully paid",
+    };
   }
 
   await prisma.loan.update({

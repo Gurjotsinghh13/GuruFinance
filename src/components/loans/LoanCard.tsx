@@ -68,9 +68,15 @@ export function LoanCard({ loan, summary }: Props) {
             {/* Key figures */}
             <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
               <div>
-                <p className="text-xs text-gray-500">Principal</p>
+                <p className="text-xs text-gray-500">
+                  {loan.interestType === "COMPOUND" ? "Effective Principal" : "Principal"}
+                </p>
                 <p className="text-base font-bold text-gray-900 tabular-nums">
-                  {formatCurrency(Number(loan.currentPrincipal))}
+                  {formatCurrency(
+                    loan.interestType === "COMPOUND"
+                      ? summary.effectivePrincipal
+                      : Number(loan.currentPrincipal)
+                  )}
                 </p>
                 {Number(loan.currentPrincipal) !== Number(loan.principalAmount) && (
                   <p className="text-xs text-gray-400">

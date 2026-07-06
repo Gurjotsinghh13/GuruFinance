@@ -16,7 +16,9 @@ interface MonthData {
 interface LoanSummary {
   loanNumber: string;
   currentPrincipal: any;
+  effectivePrincipal: number;
   interestRate: any;
+  interestType: string;
   loanFrequency: string;
   borrower: { fullName: string };
   interestDues: { dueAmount: any; paidAmount: any; waivedAmount: any; status: string; dueDate?: Date | string }[];
@@ -31,7 +33,7 @@ interface Props {
 export function ReportsClient({ monthlyData, activeLoansSummary, overdueTotal }: Props) {
   const maxDue = Math.max(...monthlyData.map((m) => m.totalDue), 1);
   const totalPrincipal = activeLoansSummary.reduce(
-    (s, l) => s + Number(l.currentPrincipal), 0
+    (s, l) => s + l.effectivePrincipal, 0
   );
 
   return (
@@ -159,6 +161,7 @@ export function ReportsClient({ monthlyData, activeLoansSummary, overdueTotal }:
                 <th>Loan</th>
                 <th className="text-right">Principal</th>
                 <th className="text-right">Unpaid</th>
+                <th>Type</th>
                 <th className="text-right">Rate</th>
               </tr>
             </thead>
@@ -175,12 +178,13 @@ export function ReportsClient({ monthlyData, activeLoansSummary, overdueTotal }:
                   <tr key={loan.loanNumber} className={hasOverdue ? "bg-red-50/50" : ""}>
                     <td className="font-medium text-gray-900">{loan.borrower.fullName}</td>
                     <td className="font-mono text-xs text-indigo-700">{loan.loanNumber}</td>
-                    <td className="text-right tabular-nums">{formatCurrency(Number(loan.currentPrincipal))}</td>
+                    <td className="text-right tabular-nums">{formatCurrency(loan.effectivePrincipal)}</td>
                     <td className={`text-right tabular-nums font-medium ${
                       hasOverdue ? "text-red-600" : pendingInterest > 0 ? "text-amber-600" : "text-gray-500"
                     }`}>
                       {formatCurrency(pendingInterest)}
                     </td>
+                    <td>{loan.interestType === "COMPOUND" ? "Compound" : "Simple"}</td>
                     <td className="text-right">
                       {formatPercent(Number(loan.interestRate))}/{loan.loanFrequency === "MONTHLY" ? "mo" : "day"}
                     </td>
