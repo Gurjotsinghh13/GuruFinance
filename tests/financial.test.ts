@@ -10,6 +10,7 @@ import {
   calculateLoanSummary,
   calculatePeriodDue,
   dailyInterestAmount,
+  generateDueDates,
   monthlyInterestAmount,
 } from "@/features/interest-engine";
 
@@ -3010,6 +3011,197 @@ describe("account management & data lifecycle (Phase 7)", () => {
     const sessionTokenVersion = 1;
     const isAllowed = user.isActive && user.tokenVersion === sessionTokenVersion;
     assert.equal(isAllowed, false);
+  });
+});
+
+describe("financial QA & end-to-end money flow audit (Phase 8)", () => {
+  it("Step 2 & 3: Simple interest independent verification & multi-month non-compounding", () => {
+    // Scenario A: ₹100,000 at 5% -> Expected ₹5,000
+    const expectedA = (100000 * 5) / 100;
+    const actualA = monthlyInterestAmount(100000, 5);
+    assert.equal(actualA, expectedA);
+
+    // Scenario B: ₹50,000 at 2% -> Expected ₹1,000
+    const expectedB = (50000 * 2) / 100;
+    const actualB = monthlyInterestAmount(50000, 2);
+    assert.equal(actualB, expectedB);
+
+    // Scenario C: ₹250,000 at 3.5% -> Expected ₹8,750
+    const expectedC = (250000 * 3.5) / 100;
+    const actualC = monthlyInterestAmount(250000, 3.5);
+    assert.equal(actualC, expectedC);
+
+    // Multi-month test: 3 months unpaid simple interest dues
+    const dues = [
+      { dueAmount: 5000, paidAmount: 0, waivedAmount: 0, wasCompounded: false },
+      { dueAmount: 5000, paidAmount: 0, waivedAmount: 0, wasCompounded: false },
+      { dueAmount: 5000, paidAmount: 0, waivedAmount: 0, wasCompounded: false },
+    ];
+    const effectivePrincipal = calculateEffectivePrincipal(100000, InterestType.SIMPLE, dues);
+    assert.equal(effectivePrincipal, 100000); // Simple interest NEVER inflates principal
+  });
+
+  it("Step 4: Compound interest multi-month progression verification", () => {
+    // Month 1: 100000 * 5% = 5000. Unpaid -> Capitalized = 5000. Effective = 105000
+    const m1Dues = [{ dueAmount: 5000, paidAmount: 0, waivedAmount: 0, wasCompounded: true }];
+    const effP1 = calculateEffectivePrincipal(100000, InterestType.COMPOUND, m1Dues);
+    assert.equal(effP1, 105000);
+
+    // Month 2 interest on 105000: 105000 * 5% = 5250
+    const m2Interest = monthlyInterestAmount(effP1, 5);
+    assert.equal(m2Interest, 5250);
+
+    const m2Dues = [
+      { dueAmount: 5000, paidAmount: 0, waivedAmount: 0, wasCompounded: true },
+      { dueAmount: 5250, paidAmount: 0, waivedAmount: 0, wasCompounded: true },
+    ];
+    const effP2 = calculateEffectivePrincipal(100000, InterestType.COMPOUND, m2Dues);
+    assert.equal(effP2, 110250);
+
+    // Month 3 interest on 110250: 110250 * 5% = 5512.50
+    const m3Interest = monthlyInterestAmount(effP2, 5);
+    assert.equal(m3Interest, 5512.5);
+
+    const m3Dues = [
+      { dueAmount: 5000, paidAmount: 0, waivedAmount: 0, wasCompounded: true },
+      { dueAmount: 5250, paidAmount: 0, waivedAmount: 0, wasCompounded: true },
+      { dueAmount: 5512.5, paidAmount: 0, waivedAmount: 0, wasCompounded: true },
+    ];
+    const effP3 = calculateEffectivePrincipal(100000, InterestType.COMPOUND, m3Dues);
+    assert.equal(effP3, 115762.5);
+  });
+
+  it("Step 5 & 7: Compound partial payment scenario", () => {
+    // Principal 100000 @ 5%. Due = 5000. Paid = 2000. Remaining unpaid = 3000.
+    const dues = [{ dueAmount: 5000, paidAmount: 2000, waivedAmount: 0, wasCompounded: true }];
+    const capitalized = calculateCapitalizedInterest(dues);
+    assert.equal(capitalized, 3000); // ONLY unpaid 3000 capitalized, NOT full 5000
+
+    const effP = calculateEffectivePrincipal(100000, InterestType.COMPOUND, dues);
+    assert.equal(effP, 103000);
+
+    const nextInterest = monthlyInterestAmount(effP, 5);
+    assert.equal(nextInterest, 5150);
+  });
+
+  it("Step 6: Full payment before capitalization", () => {
+    // Principal 100000 @ 5%. Due = 5000. Full payment = 5000.
+    const dues = [{ dueAmount: 5000, paidAmount: 5000, waivedAmount: 0, wasCompounded: true }];
+    const capitalized = calculateCapitalizedInterest(dues);
+    assert.equal(capitalized, 0);
+
+    const effP = calculateEffectivePrincipal(100000, InterestType.COMPOUND, dues);
+    assert.equal(effP, 100000);
+  });
+
+  it("Step 8: Overpayment handling", () => {
+    const dues = [
+      { id: "due-1", dueAmount: 5000, paidAmount: 0, waivedAmount: 0, status: "OVERDUE", dueDate: new Date("2026-01-01") },
+    ];
+
+    const result = allocatePayment(7000, dues, new Date("2026-02-01"));
+    assert.equal(result.totalAllocated, 5000);
+    assert.equal(result.unallocated, 2000); // 2000 available for principal reduction
+  });
+
+  it("Step 10: Principal repayment impact", () => {
+    // Base principal 100000, Capitalized interest 5000 -> Effective principal 105000
+    // Repayment of 20000 reduces base principal directly to 80000
+    const basePrincipal = 100000 - 20000; // 80000
+    const dues = [{ dueAmount: 5000, paidAmount: 0, waivedAmount: 0, wasCompounded: true }];
+
+    const effP = calculateEffectivePrincipal(basePrincipal, InterestType.COMPOUND, dues);
+    assert.equal(basePrincipal, 80000);
+    assert.equal(effP, 85000);
+  });
+
+  it("Step 11: Loan top-up impact", () => {
+    // Base principal 100000, Capitalized interest 5000 -> Top-up 20000
+    const basePrincipal = 100000 + 20000; // 120000
+    const dues = [{ dueAmount: 5000, paidAmount: 0, waivedAmount: 0, wasCompounded: true }];
+
+    const effP = calculateEffectivePrincipal(basePrincipal, InterestType.COMPOUND, dues);
+    assert.equal(basePrincipal, 120000);
+    assert.equal(effP, 125000);
+  });
+
+  it("Step 12: Compound capitalization double-count protection & idempotency", () => {
+    const dues = [{ dueAmount: 5000, paidAmount: 0, waivedAmount: 0, wasCompounded: true }];
+
+    // Run capitalization calculation multiple times
+    const cap1 = calculateCapitalizedInterest(dues);
+    const cap2 = calculateCapitalizedInterest(dues);
+    const cap3 = calculateCapitalizedInterest(dues);
+
+    assert.equal(cap1, 5000);
+    assert.equal(cap2, 5000);
+    assert.equal(cap3, 5000); // Idempotent: Same unpaid interest is NEVER double-counted
+  });
+
+  it("Step 14: Payment after capitalization reduces capitalized interest", () => {
+    // Initially unpaid due of 5000 was compounded -> Capitalized = 5000, Effective = 105000
+    const duesBefore = [{ dueAmount: 5000, paidAmount: 0, waivedAmount: 0, wasCompounded: true }];
+    assert.equal(calculateEffectivePrincipal(100000, InterestType.COMPOUND, duesBefore), 105000);
+
+    // Borrower later pays 5000 against that due
+    const duesAfter = [{ dueAmount: 5000, paidAmount: 5000, waivedAmount: 0, wasCompounded: true }];
+    assert.equal(calculateCapitalizedInterest(duesAfter), 0);
+    assert.equal(calculateEffectivePrincipal(100000, InterestType.COMPOUND, duesAfter), 100000);
+  });
+
+  it("Step 16: Financial rounding audit for repeating decimals", () => {
+    // 100,000 @ 3.33% -> 3330.00
+    assert.equal(monthlyInterestAmount(100000, 3.33), 3330);
+
+    // 75,000 @ 2.75% -> 2062.50
+    assert.equal(monthlyInterestAmount(75000, 2.75), 2062.5);
+
+    // 12,345 @ 1.37% -> 169.1265 -> Rounds half-up to 169.13
+    const expectedDecimal = Math.round((12345 * 1.37 / 100 + Number.EPSILON) * 100) / 100;
+    assert.equal(monthlyInterestAmount(12345, 1.37), expectedDecimal);
+    assert.equal(expectedDecimal, 169.13);
+  });
+
+  it("Step 17: Date and month boundary calculations", () => {
+    const Jan31 = new Date("2026-01-31");
+    const dueDates = generateDueDates(Jan31, LoanFrequency.MONTHLY, 31, new Date("2026-03-31"));
+
+    assert.equal(dueDates.length, 2);
+    // February 2026 (non-leap year) has 28 days -> Feb 28
+    assert.equal(dueDates[0].getMonth(), 1); // Feb (0-indexed 1)
+    assert.equal(dueDates[0].getDate(), 28);
+    // March 2026 has 31 days -> Mar 31
+    assert.equal(dueDates[1].getMonth(), 2); // Mar (0-indexed 2)
+    assert.equal(dueDates[1].getDate(), 31);
+  });
+
+  it("Step 19: Complete end-to-end multi-step money flow verification", () => {
+    // 1. Initial State: Principal 100000, Interest 5% COMPOUND
+    let basePrincipal = 100000;
+
+    // Month 1: Due 5000. Payment 2000. Unpaid = 3000
+    const m1Due = { dueAmount: 5000, paidAmount: 2000, waivedAmount: 0, wasCompounded: true };
+    let effP = calculateEffectivePrincipal(basePrincipal, InterestType.COMPOUND, [m1Due]);
+    assert.equal(effP, 103000); // 100000 + 3000
+
+    // Month 2: Due on 103000 = 5150. Payment 5150. Unpaid = 0
+    const m2Due = { dueAmount: 5150, paidAmount: 5150, waivedAmount: 0, wasCompounded: false };
+    effP = calculateEffectivePrincipal(basePrincipal, InterestType.COMPOUND, [m1Due, m2Due]);
+    assert.equal(effP, 103000);
+
+    // Principal Repayment: 10,000
+    basePrincipal -= 10000; // 90000
+    effP = calculateEffectivePrincipal(basePrincipal, InterestType.COMPOUND, [m1Due, m2Due]);
+    assert.equal(effP, 93000); // 90000 + 3000
+
+    // Top-Up: 20,000
+    basePrincipal += 20000; // 110000
+    effP = calculateEffectivePrincipal(basePrincipal, InterestType.COMPOUND, [m1Due, m2Due]);
+    assert.equal(effP, 113000); // 110000 + 3000
+
+    // Month 3 Interest on 113000: 113000 * 5% = 5650
+    const m3Interest = monthlyInterestAmount(effP, 5);
+    assert.equal(m3Interest, 5650);
   });
 });
 

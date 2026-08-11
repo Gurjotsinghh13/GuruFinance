@@ -183,11 +183,15 @@ export function generateDueDates(
       if (current > start) {
         dueDates.push(new Date(current));
       }
+      // Advance by one month from the current date
       current = addMonths(current, 1);
-      // Handle month-end edge cases (e.g. Jan 31 → Feb 28)
-      if (current.getDate() !== dueDay && dueDay <= 28) {
-        current.setDate(dueDay);
-      }
+      // Always try to pin back to the original start-day of month (e.g. 31).
+      // setDate() with a day > last-day-of-month automatically rolls over to next
+      // month in JS, so we clamp to the actual last day of the current month first.
+      const pinYear = current.getFullYear();
+      const pinMonth = current.getMonth();
+      const lastDayOfMonth = new Date(pinYear, pinMonth + 1, 0).getDate();
+      current.setDate(Math.min(startDay, lastDayOfMonth));
     }
   } else {
     // DAILY
