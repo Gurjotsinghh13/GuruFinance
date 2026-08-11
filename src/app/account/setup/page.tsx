@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { loginAction } from "@/app/actions/auth";
-import { Landmark, Eye, EyeOff, Loader2 } from "lucide-react";
+import { setupAccountEmailAction } from "@/app/actions/auth";
+import { Landmark, ArrowLeft, Loader2, KeyRound } from "lucide-react";
 import Link from "next/link";
 
-export default function LoginPage() {
-  const [showPassword, setShowPassword] = useState(false);
+export default function AccountSetupPage() {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -16,7 +15,7 @@ export default function LoginPage() {
     const formData = new FormData(e.currentTarget);
 
     startTransition(async () => {
-      const result = await loginAction(formData);
+      const result = await setupAccountEmailAction(formData);
       if (result?.error) setError(result.error);
     });
   }
@@ -34,18 +33,66 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Login card */}
+      {/* Account setup card */}
       <div className="w-full max-w-sm card p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-6">Sign in</h2>
+        <div className="flex items-center gap-2 mb-5">
+          <Link href="/login" className="text-gray-400 hover:text-gray-600">
+            <ArrowLeft className="w-4 h-4" />
+          </Link>
+          <h2 className="text-lg font-semibold text-gray-900">Account Migration</h2>
+        </div>
+
+        <p className="text-sm text-gray-500 mb-6">
+          Existing lenders: Enter your registered mobile number and password to link your email address for secure login.
+        </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Email */}
+          {/* Registered Mobile */}
+          <div>
+            <label
+              htmlFor="mobile"
+              className="block text-sm font-medium text-gray-700 mb-1.5"
+            >
+              Registered Mobile Number
+            </label>
+            <input
+              id="mobile"
+              name="mobile"
+              type="tel"
+              inputMode="numeric"
+              autoComplete="tel"
+              required
+              placeholder="10-digit mobile number"
+              className="input-base"
+            />
+          </div>
+
+          {/* Account Password */}
+          <div>
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-gray-700 mb-1.5"
+            >
+              Account Password
+            </label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              placeholder="Enter your current password"
+              className="input-base"
+            />
+          </div>
+
+          {/* New Email Address */}
           <div>
             <label
               htmlFor="email"
               className="block text-sm font-medium text-gray-700 mb-1.5"
             >
-              Email Address
+              New Email Address
             </label>
             <input
               id="email"
@@ -59,36 +106,24 @@ export default function LoginPage() {
             />
           </div>
 
-          {/* Password */}
+          {/* Confirm Email Address */}
           <div>
             <label
-              htmlFor="password"
+              htmlFor="confirmEmail"
               className="block text-sm font-medium text-gray-700 mb-1.5"
             >
-              Password
+              Confirm Email Address
             </label>
-            <div className="relative">
-              <input
-                id="password"
-                name="password"
-                type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
-                required
-                placeholder="Enter your password"
-                className="input-base pr-10"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((s) => !s)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? (
-                  <EyeOff className="w-4 h-4" />
-                ) : (
-                  <Eye className="w-4 h-4" />
-                )}
-              </button>
-            </div>
+            <input
+              id="confirmEmail"
+              name="confirmEmail"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              required
+              placeholder="Re-enter your email address"
+              className="input-base"
+            />
           </div>
 
           {/* Error */}
@@ -107,38 +142,12 @@ export default function LoginPage() {
             {isPending ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Signing in...
+                Linking Email...
               </>
             ) : (
-              "Sign in"
+              "Complete Email Setup"
             )}
           </button>
-
-          {/* Links */}
-          <div className="flex flex-col items-center gap-2 pt-2 text-center text-sm">
-            <Link
-              href="/forgot-password"
-              className="text-indigo-600 hover:text-indigo-700"
-            >
-              Forgot password?
-            </Link>
-            <Link
-              href="/account/setup"
-              className="text-xs text-gray-500 hover:text-indigo-600"
-            >
-              Existing account without email? Set up email
-            </Link>
-            <p className="text-gray-500">
-              Don&apos;t have an account?{" "}
-              <Link
-                href="/register"
-                className="text-indigo-600 hover:text-indigo-700 font-medium"
-              >
-                Create one
-              </Link>
-            </p>
-          </div>
-
         </form>
       </div>
 

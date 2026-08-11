@@ -2869,8 +2869,108 @@ describe("registration and user onboarding", () => {
     assert.equal(options.clearedSession, true);
   });
 
+  it("existing user onboarding (setupAccountEmailAction) validates credentials, email uniqueness, updates email without changing User ID or financial relations, and logs audit event", async () => {
+    const updatedUsers: any[] = [];
+    const auditLogs: any[] = [];
+    const options: any = {};
+
+    const existingUser = {
+      id: "legacy_user_123",
+      name: "Legacy Lender",
+      mobile: "9876543210",
+      email: null,
+      passwordHash: "hashed_legacyPass123",
+      role: "ADMIN",
+      isActive: true,
+      tokenVersion: 1,
+    };
+
+    const mockPrisma = {
+      user: {
+        findUnique: async ({ where }: any) => {
+          if (where.mobile === "9876543210") return existingUser;
+          if (where.email === "existing_other@example.com") {
+            return { id: "user_other", email: "existing_other@example.com" };
+          }
+          return null;
+        },
+        update: async (args: any) => {
+          const res = { ...existingUser, ...args.data };
+          updatedUsers.push(args);
+          return res;
+        },
+      },
+      auditLog: {
+        create: async (args: any) => {
+          auditLogs.push(args.data);
+          return args.data;
+        },
+      },
+    };
+
+    const { setupAccountEmailAction } = loadAuthActions(mockPrisma, options);
+
+    // 1. Invalid mobile
+    const fdBadMobile = new FormData();
+    fdBadMobile.set("mobile", "123");
+    fdBadMobile.set("password", "legacyPass123");
+    fdBadMobile.set("email", "new_lender@example.com");
+    const resBadMobile = await setupAccountEmailAction(fdBadMobile);
+    assert.equal(resBadMobile.error, "Please enter a valid mobile number (at least 10 digits)");
+
+    // 2. Incorrect password
+    const fdWrongPass = new FormData();
+    fdWrongPass.set("mobile", "9876543210");
+    fdWrongPass.set("password", "wrongPass");
+    fdWrongPass.set("email", "new_lender@example.com");
+    const resWrongPass = await setupAccountEmailAction(fdWrongPass);
+    assert.equal(resWrongPass.error, "Invalid mobile number or password");
+
+    // 3. Invalid email format
+    const fdBadEmail = new FormData();
+    fdBadEmail.set("mobile", "9876543210");
+    fdBadEmail.set("password", "legacyPass123");
+    fdBadEmail.set("email", "not-an-email");
+    const resBadEmail = await setupAccountEmailAction(fdBadEmail);
+    assert.equal(resBadEmail.error, "Please enter a valid email address");
+
+    // 4. Duplicate email address
+    const fdDupEmail = new FormData();
+    fdDupEmail.set("mobile", "9876543210");
+    fdDupEmail.set("password", "legacyPass123");
+    fdDupEmail.set("email", "existing_other@example.com");
+    const resDupEmail = await setupAccountEmailAction(fdDupEmail);
+    assert.equal(resDupEmail.error, "An account with this email address already exists");
+
+    // 5. Successful onboarding
+    const fdValid = new FormData();
+    fdValid.set("mobile", "9876543210");
+    fdValid.set("password", "legacyPass123");
+    fdValid.set("email", " New_Lender@Example.COM "); // should normalize
+    fdValid.set("confirmEmail", "new_lender@example.com");
+
+    await assert.rejects(
+      async () => {
+        await setupAccountEmailAction(fdValid);
+      },
+      (err: any) => err.message === "NEXT_REDIRECT:/dashboard"
+    );
+
+    // Verify User ID preserved completely
+    assert.equal(updatedUsers[0].where.id, "legacy_user_123");
+    assert.equal(updatedUsers[0].data.email, "new_lender@example.com"); // normalized
+    assert.equal(options.savedToken, "token_legacy_user_123");
+    assert.equal(options.redirectUrl, "/dashboard");
+
+    // Verify Audit log created
+    assert.equal(auditLogs.length, 1);
+    assert.equal(auditLogs[0].userId, "legacy_user_123");
+    assert.equal(auditLogs[0].action, "SETTINGS_UPDATED");
+    assert.equal(auditLogs[0].details.email, "new_lender@example.com");
+  });
 
   it("enforces secure reset tokens, token hashing, rate limiting, and tokenVersion session invalidation", async () => {
+
 
     const utils = await import("@/utils");
     const token1 = utils.generateResetToken();

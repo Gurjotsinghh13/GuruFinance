@@ -472,3 +472,98 @@ export async function exportUserDataAction(): Promise<{
 
   return { csvData: csvContent, filename };
 }
+
+// ============================================================
+// EXISTING USER ONBOARDING (Migration Action)
+// Allows pre-existing users without an email to prove ownership of
+// their account using their registered mobile number + password,
+// validate & normalize a new email address, update their User record,
+// and issue an email-based session without changing their User ID.
+// ============================================================
+
+export async function setupAccountEmailAction(formData: FormData): Promise<{
+  error?: string;
+}> {
+  const rawMobile = formData.get("mobile") as string;
+  const password = formData.get("password") as string;
+  const rawEmail = formData.get("email") as string;
+  const rawConfirmEmail = formData.get("confirmEmail") as string;
+
+  const mobile = rawMobile ? rawMobile.trim().replace(/[\s\-\(\)]/g, "") : "";
+  if (!mobile || mobile.length < 10) {
+    return { error: "Please enter a valid mobile number (at least 10 digits)" };
+  }
+
+  if (!password) {
+    return { error: "Password is required" };
+  }
+
+  const rateLimit = checkRateLimit(`account-setup:${mobile}`, 5, 15 * 60 * 1000);
+  if (!rateLimit.allowed) {
+    return {
+      error: `Too many setup attempts. Please try again in ${rateLimit.retryAfterSeconds} seconds.`,
+    };
+  }
+
+  // 1. Verify existing credentials securely
+  const user = await prisma.user.findUnique({ where: { mobile } });
+  if (!user || !user.isActive) {
+    return { error: "Invalid mobile number or password" };
+  }
+
+  const isValidPassword = await verifyPassword(password, user.passwordHash);
+  if (!isValidPassword) {
+    return { error: "Invalid mobile number or password" };
+  }
+
+  // 2. Validate email input
+  const email = rawEmail ? normalizeEmail(rawEmail) : "";
+  if (!email || !email.includes("@") || !email.includes(".") || email.length < 5) {
+    return { error: "Please enter a valid email address" };
+  }
+
+  if (rawConfirmEmail && normalizeEmail(rawConfirmEmail) !== email) {
+    return { error: "Email addresses do not match" };
+  }
+
+  // 3. Check email uniqueness across users
+  const existingWithEmail = await prisma.user.findUnique({ where: { email } });
+  if (existingWithEmail && existingWithEmail.id !== user.id) {
+    return { error: "An account with this email address already exists" };
+  }
+
+  // 4. Update ONLY email on existing user record (preserving user.id & all financial relations)
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: { email },
+  });
+
+  // 5. Audit event
+  await prisma.auditLog.create({
+    data: {
+      userId: user.id,
+      action: AuditAction.SETTINGS_UPDATED,
+      entityType: "User",
+      entityId: user.id,
+      details: { action: "email_onboarding", email },
+    },
+  });
+
+  // 6. Issue email-based session cookie
+  const token = await createSessionToken({
+    id: updatedUser.id,
+    name: updatedUser.name,
+    email: updatedUser.email!,
+    role: updatedUser.role,
+    tokenVersion: updatedUser.tokenVersion,
+  });
+
+  await setSessionCookie(token);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
+  });
+
+  redirect("/dashboard");
+}
