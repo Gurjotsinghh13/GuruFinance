@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Settings, MessageSquare, Lock, Save, Loader2, Check } from "lucide-react";
+import { Settings, MessageSquare, Lock, Save, Loader2, Check, Download, UserCheck } from "lucide-react";
 import { saveTemplateAction } from "@/app/actions/settings";
-import { changePasswordAction } from "@/app/actions/auth";
+import { changePasswordAction, updateAccountAction, exportUserDataAction } from "@/app/actions/auth";
 import type { SessionUser } from "@/types";
 
 interface Template {
@@ -31,14 +31,20 @@ const TEMPLATE_VARS: Record<string, string[]> = {
 };
 
 export function SettingsClient({ user, templates }: Props) {
-  const [activeTab, setActiveTab] = useState<"templates" | "security">("templates");
+  const [activeTab, setActiveTab] = useState<"templates" | "security" | "export">("templates");
   const [templateValues, setTemplateValues] = useState<Record<string, string>>(
     Object.fromEntries(templates.map((t) => [t.type, t.value]))
   );
   const [savedTypes, setSavedTypes] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
+
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const [accountSuccess, setAccountSuccess] = useState(false);
+
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  const [exportError, setExportError] = useState<string | null>(null);
 
   function handleSaveTemplate(type: string) {
     startTransition(async () => {
@@ -47,6 +53,18 @@ export function SettingsClient({ user, templates }: Props) {
         setSavedTypes((s) => new Set([...s, type]));
         setTimeout(() => setSavedTypes((s) => { const n = new Set(s); n.delete(type); return n; }), 2000);
       }
+    });
+  }
+
+  async function handleUpdateAccount(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setAccountError(null);
+    setAccountSuccess(false);
+    const fd = new FormData(e.currentTarget);
+    startTransition(async () => {
+      const result = await updateAccountAction(fd);
+      if (result.error) setAccountError(result.error);
+      else setAccountSuccess(true);
     });
   }
 
@@ -62,6 +80,25 @@ export function SettingsClient({ user, templates }: Props) {
     });
   }
 
+  async function handleExportData() {
+    setExportError(null);
+    startTransition(async () => {
+      const result = await exportUserDataAction();
+      if (result.error || !result.csvData) {
+        setExportError(result.error || "Failed to export portfolio data");
+        return;
+      }
+      const blob = new Blob([result.csvData], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", result.filename || "loanbook_export.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
+  }
+
   return (
     <div className="max-w-2xl mx-auto space-y-5">
       <h1 className="text-xl font-semibold text-gray-900">Settings</h1>
@@ -70,7 +107,8 @@ export function SettingsClient({ user, templates }: Props) {
       <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
         {[
           { value: "templates", label: "WhatsApp Templates", icon: MessageSquare },
-          { value: "security", label: "Security", icon: Lock },
+          { value: "security", label: "Account & Security", icon: Lock },
+          { value: "export", label: "Data Export", icon: Download },
         ].map(({ value, label, icon: Icon }) => (
           <button
             key={value}
@@ -152,26 +190,37 @@ export function SettingsClient({ user, templates }: Props) {
         </div>
       )}
 
-      {/* Security */}
+      {/* Security & Account */}
       {activeTab === "security" && (
         <div className="space-y-4">
-          {/* Account info */}
+          {/* Account Details Update */}
           <div className="card p-5">
-            <h3 className="font-medium text-gray-900 mb-3">Account</h3>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                <span className="text-sm text-gray-500">Name</span>
-                <span className="text-sm font-medium text-gray-900">{user.name}</span>
+            <h3 className="font-medium text-gray-900 mb-4">Account Information</h3>
+            <form onSubmit={handleUpdateAccount} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Full Name</label>
+                <input name="name" type="text" defaultValue={user.name} required className="input-base" />
               </div>
-              <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                <span className="text-sm text-gray-500">Mobile</span>
-                <span className="text-sm font-medium text-gray-900">{user.mobile}</span>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Mobile Number</label>
+                <input name="mobile" type="tel" defaultValue={user.mobile} required className="input-base" />
               </div>
-              <div className="flex items-center justify-between py-2">
-                <span className="text-sm text-gray-500">Role</span>
-                <span className="badge-active">{user.role}</span>
-              </div>
-            </div>
+
+              {accountError && (
+                <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3">
+                  <p className="text-sm text-red-700">{accountError}</p>
+                </div>
+              )}
+              {accountSuccess && (
+                <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3">
+                  <p className="text-sm text-emerald-700">Account details updated successfully.</p>
+                </div>
+              )}
+
+              <button type="submit" disabled={isPending} className="btn-primary w-full">
+                {isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : "Save Account Details"}
+              </button>
+            </form>
           </div>
 
           {/* Change password */}
@@ -207,6 +256,37 @@ export function SettingsClient({ user, templates }: Props) {
               </button>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Data Export */}
+      {activeTab === "export" && (
+        <div className="card p-5 space-y-4">
+          <div>
+            <h3 className="font-medium text-gray-900">Export Portfolio Data</h3>
+            <p className="text-xs text-gray-500 mt-1">
+              Download your complete borrower and loan portfolio data as a sanitized CSV spreadsheet.
+            </p>
+          </div>
+
+          {exportError && (
+            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3">
+              <p className="text-sm text-red-700">{exportError}</p>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleExportData}
+            disabled={isPending}
+            className="btn-primary w-full inline-flex items-center justify-center gap-2"
+          >
+            {isPending ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Exporting...</>
+            ) : (
+              <><Download className="w-4 h-4" /> Download Portfolio CSV</>
+            )}
+          </button>
         </div>
       )}
     </div>

@@ -12,6 +12,7 @@ import {
   setSessionCookie,
   clearSession,
   getSession,
+  requireAuth,
 } from "@/lib/auth";
 import { AuditAction } from "@prisma/client";
 import { redirect } from "next/navigation";
@@ -328,5 +329,120 @@ export async function registerAction(formData: FormData): Promise<{
   });
 
   redirect("/dashboard");
+}
+
+// ============================================================
+// UPDATE ACCOUNT DETAILS (Name & Mobile Number)
+// ============================================================
+
+export async function updateAccountAction(formData: FormData): Promise<{
+  error?: string;
+  success?: boolean;
+}> {
+  const session = await requireAuth();
+
+  const name = (formData.get("name") as string)?.trim();
+  const rawMobile = (formData.get("mobile") as string)?.trim();
+
+  if (!name || !rawMobile) {
+    return { error: "Name and mobile number are required" };
+  }
+
+  const mobile = rawMobile.replace(/[\s\-\(\)]/g, "");
+  if (!/^\d{10,15}$/.test(mobile)) {
+    return { error: "Please enter a valid mobile number (10-15 digits)" };
+  }
+
+  // Check mobile uniqueness if changed
+  const existing = await prisma.user.findUnique({ where: { mobile } });
+  if (existing && existing.id !== session.id) {
+    return { error: "This mobile number is already registered to another account" };
+  }
+
+  const updatedUser = await prisma.user.update({
+    where: { id: session.id },
+    data: { name, mobile },
+  });
+
+  // Re-issue updated session cookie
+  const token = await createSessionToken({
+    id: updatedUser.id,
+    name: updatedUser.name,
+    mobile: updatedUser.mobile,
+    role: updatedUser.role,
+    tokenVersion: updatedUser.tokenVersion,
+  });
+
+  await setSessionCookie(token);
+
+  await prisma.auditLog.create({
+    data: {
+      userId: session.id,
+      action: AuditAction.SETTINGS_UPDATED,
+      entityType: "User",
+      entityId: session.id,
+      details: { field: "account_info" },
+    },
+  });
+
+  return { success: true };
+}
+
+// ============================================================
+// EXPORT USER PORTFOLIO DATA (CSV Format)
+// ============================================================
+
+export async function exportUserDataAction(): Promise<{
+  error?: string;
+  csvData?: string;
+  filename?: string;
+}> {
+  const session = await requireAuth();
+
+  const loans = await prisma.loan.findMany({
+    where: { borrower: { userId: session.id } },
+    include: {
+      borrower: true,
+      interestDues: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const escapeCsv = (val: string | number | boolean | null | undefined) => {
+    if (val === null || val === undefined) return '""';
+    let str = String(val).replace(/"/g, '""');
+    // Prevent CSV Formula Injection
+    if (/^[=+\-@]/.test(str)) {
+      str = "'" + str;
+    }
+    return `"${str}"`;
+  };
+
+  const headers = [
+    "Loan Number",
+    "Borrower Name",
+    "Borrower Mobile",
+    "Status",
+    "Interest Type",
+    "Principal Amount",
+    "Interest Rate (%)",
+    "Start Date",
+  ];
+
+  const rows = loans.map((l) => [
+    escapeCsv(l.loanNumber),
+    escapeCsv(l.borrower.fullName),
+    escapeCsv(l.borrower.mobile),
+    escapeCsv(l.status),
+    escapeCsv(l.interestType),
+    escapeCsv(Number(l.principalAmount)),
+    escapeCsv(Number(l.interestRate)),
+    escapeCsv(l.startDate.toISOString().split("T")[0]),
+  ]);
+
+  const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+  const filename = `loanbook_portfolio_${new Date().toISOString().split("T")[0]}.csv`;
+
+  return { csvData: csvContent, filename };
 }
 

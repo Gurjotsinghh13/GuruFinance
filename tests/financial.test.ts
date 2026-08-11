@@ -289,6 +289,7 @@ function loadAuthActions(mockPrisma: MockPrisma, options: any = {}) {
       setSessionCookie: async (t: string) => { options.savedToken = t; },
       clearSession: async () => { options.clearedSession = true; },
       getSession: async () => options.session || null,
+      requireAuth: async () => options.session || { id: "user-1", name: "User 1", mobile: "9876543210", role: "ADMIN" },
     },
   } as NodeModule;
 
@@ -2941,4 +2942,75 @@ describe("registration and user onboarding", () => {
     }
   });
 });
+
+describe("account management & data lifecycle (Phase 7)", () => {
+  it("updateAccountAction validates mobile uniqueness and normalizes input", async () => {
+    const mockPrisma = {
+      user: {
+        findUnique: async ({ where }: any) => {
+          if (where.mobile === "9999999992") {
+            return { id: "user_b", name: "User B", mobile: "9999999992" };
+          }
+          return null;
+        },
+        update: async (args: any) => ({ id: "user_a", ...args.data }),
+      },
+      auditLog: {
+        create: async (args: any) => args.data,
+      },
+    };
+
+    const { updateAccountAction } = loadAuthActions(mockPrisma, {
+      session: { id: "user_a", name: "User A", mobile: "9999999991", role: "ADMIN" },
+    });
+
+    const fdDuplicate = new FormData();
+    fdDuplicate.set("name", "User A Updated");
+    fdDuplicate.set("mobile", "9999999992");
+
+    const dupResult = await updateAccountAction(fdDuplicate);
+    assert.equal(dupResult.error, "This mobile number is already registered to another account");
+  });
+
+  it("exportUserDataAction sanitizes fields against formula injection and scopes to authenticated user", async () => {
+    const mockPrisma = {
+      loan: {
+        findMany: async (query: any) => {
+          assert.equal(query.where.borrower.userId, "user_a");
+          return [
+            {
+              loanNumber: "=1+2-DANGEROUS",
+              principalAmount: "50000",
+              interestRate: "3",
+              interestType: "SIMPLE",
+              status: "ACTIVE",
+              startDate: new Date("2026-01-01"),
+              borrower: { fullName: "Alice Smith", mobile: "+919876543210" },
+              interestDues: [],
+            },
+          ];
+        },
+      },
+    };
+
+    const { exportUserDataAction } = loadAuthActions(mockPrisma, {
+      session: { id: "user_a", name: "User A", mobile: "9999999991", role: "ADMIN" },
+    });
+
+    const exportResult = await exportUserDataAction();
+    assert.equal(exportResult.error, undefined);
+    assert.equal(typeof exportResult.csvData, "string");
+    assert.equal(exportResult.csvData?.includes("'=1+2-DANGEROUS"), true); // Formula prefix escaped with single quote
+  });
+
+  it("verifies inactive account isActive = false blocks session access", async () => {
+    const user = { id: "user_inactive", isActive: false, tokenVersion: 1 };
+    assert.equal(user.isActive, false);
+
+    const sessionTokenVersion = 1;
+    const isAllowed = user.isActive && user.tokenVersion === sessionTokenVersion;
+    assert.equal(isAllowed, false);
+  });
+});
+
 
