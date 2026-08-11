@@ -29,7 +29,7 @@ export default function LoginPage() {
           <Landmark className="w-6 h-6 text-white" />
         </div>
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900">GuruFinance</h1>
+          <h1 className="text-2xl font-bold text-gray-900">LoanBook</h1>
           <p className="text-sm text-gray-500 mt-0.5">Smart Loan & Interest Management</p>
         </div>
       </div>

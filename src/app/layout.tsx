@@ -5,22 +5,30 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  applicationName: "GuruFinance",
+  applicationName: "LoanBook",
   title: {
-    default: "GuruFinance - Smart Loan & Interest Management",
-    template: "%s | GuruFinance",
+    default: "LoanBook - Smart Loan & Interest Management",
+    template: "%s | LoanBook",
   },
-  description: "Smart Loan & Interest Management",
+  description: "Smart Loan & Interest Management for Lenders",
   manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/favicon.png", type: "image/png" },
+    ],
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
+  },
   openGraph: {
-    title: "GuruFinance",
-    description: "Smart Loan & Interest Management",
-    siteName: "GuruFinance",
+    title: "LoanBook",
+    description: "Smart Loan & Interest Management for Lenders",
+    siteName: "LoanBook",
     type: "website",
   },
   appleWebApp: {
     capable: true,
-    title: "GuruFinance",
+    title: "LoanBook",
     statusBarStyle: "default",
   },
 };

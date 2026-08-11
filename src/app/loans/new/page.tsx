@@ -185,16 +185,24 @@ export default function NewLoanPage() {
 
           {/* Compounding rule */}
           {showCompound && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Compounding Rule
-              </label>
-              <select name="compoundingRule" className="input-base">
-                <option value={CompoundingRule.MONTHLY}>Compound Monthly</option>
-                <option value={CompoundingRule.AFTER_1_MISSED}>After 1 Missed Payment</option>
-                <option value={CompoundingRule.AFTER_2_MISSED}>After 2 Missed Payments</option>
-                <option value={CompoundingRule.CUSTOM}>Custom</option>
-              </select>
+            <div className="space-y-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Compounding Rule
+                </label>
+                <select name="compoundingRule" className="input-base">
+                  <option value={CompoundingRule.MONTHLY}>Compound Monthly</option>
+                  <option value={CompoundingRule.AFTER_1_MISSED}>After 1 Missed Payment</option>
+                  <option value={CompoundingRule.AFTER_2_MISSED}>After 2 Missed Payments</option>
+                  <option value={CompoundingRule.CUSTOM}>Custom</option>
+                </select>
+              </div>
+              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 flex items-start gap-2">
+                <Info className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800">
+                  Unpaid eligible interest can be capitalized according to the loan's compounding rules.
+                </p>
+              </div>
             </div>
           )}
         </div>

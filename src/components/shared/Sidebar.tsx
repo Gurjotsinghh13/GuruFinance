@@ -31,7 +31,7 @@ export function Sidebar({ user }: { user: SessionUser }) {
           <Landmark className="w-4 h-4 text-white" />
         </div>
         <div>
-          <span className="font-bold text-gray-900 block leading-none">GuruFinance</span>
+          <span className="font-bold text-gray-900 block leading-none">LoanBook</span>
           <span className="text-xs text-gray-400">Smart Loan & Interest Management</span>
         </div>
       </div>

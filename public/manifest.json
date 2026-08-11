@@ -1,6 +1,6 @@
 {
-  "name": "GuruFinance",
-  "short_name": "GuruFinance",
+  "name": "LoanBook",
+  "short_name": "LoanBook",
   "description": "Smart Loan & Interest Management",
   "start_url": "/dashboard",
   "display": "standalone",
