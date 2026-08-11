@@ -2897,5 +2897,48 @@ describe("registration and user onboarding", () => {
     const nosniffHeader = headersList.find((h: any) => h.key === "X-Content-Type-Options");
     assert.equal(nosniffHeader.value, "nosniff");
   });
+
+  it("handles SMS provider configuration, success, non-2xx, and network errors safely", async () => {
+    const { sendPasswordResetSMS } = await import("@/lib/sms");
+    const origEnv = process.env.NODE_ENV;
+    const origFetch = global.fetch;
+
+    try {
+      // 1. Missing credentials in production -> fails with expected message
+      (process.env as any).NODE_ENV = "production";
+      delete process.env.SMS_PROVIDER_API_KEY;
+      delete process.env.SMS_PROVIDER_URL;
+
+      const resProdMissing = await sendPasswordResetSMS("9876543210", "raw_token_123");
+      assert.equal(resProdMissing.success, false);
+      assert.equal(resProdMissing.error, "Password reset delivery is not configured");
+
+      // 2. Configured + HTTP 200 -> succeeds
+      process.env.SMS_PROVIDER_API_KEY = "test_key";
+      process.env.SMS_PROVIDER_URL = "https://sms.example.com/send";
+      (global as any).fetch = async () => ({ ok: true, status: 200 });
+
+      const resSuccess = await sendPasswordResetSMS("9876543210", "raw_token_123");
+      assert.equal(resSuccess.success, true);
+
+      // 3. Configured + HTTP 500 -> fails
+      (global as any).fetch = async () => ({ ok: false, status: 500 });
+      const res500 = await sendPasswordResetSMS("9876543210", "raw_token_123");
+      assert.equal(res500.success, false);
+      assert.equal(res500.error, "SMS dispatch failed");
+
+      // 4. Network error -> fails gracefully
+      (global as any).fetch = async () => { throw new Error("Network timeout"); };
+      const resNetErr = await sendPasswordResetSMS("9876543210", "raw_token_123");
+      assert.equal(resNetErr.success, false);
+      assert.equal(resNetErr.error, "SMS dispatch network error");
+
+    } finally {
+      (process.env as any).NODE_ENV = origEnv;
+      global.fetch = origFetch;
+      delete process.env.SMS_PROVIDER_API_KEY;
+      delete process.env.SMS_PROVIDER_URL;
+    }
+  });
 });
 

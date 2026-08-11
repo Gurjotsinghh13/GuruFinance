@@ -17,6 +17,7 @@ import { AuditAction } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { generateResetToken, hashResetToken } from "@/utils";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { sendPasswordResetSMS } from "@/lib/sms";
 
 // ============================================================
 // LOGIN
@@ -188,8 +189,8 @@ export async function forgotPasswordAction(rawMobile: string): Promise<{
     },
   });
 
-  // In production: send via SMS gateway
-  // For now: return token (show in dev only)
+  await sendPasswordResetSMS(mobile, rawToken);
+
   return {
     success: true,
     token: process.env.NODE_ENV === "development" ? rawToken : undefined,

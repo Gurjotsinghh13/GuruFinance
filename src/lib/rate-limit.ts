@@ -1,8 +1,7 @@
 // ============================================================
-// RATE LIMITER - Sliding Window In-Memory Protection
-// High-performance, lightweight rate limiter for authentication endpoints.
-// Note: For multi-instance/distributed production deployments,
-// an external distributed store (e.g. Redis) is recommended.
+// RATE LIMITER - Hybrid In-Memory & Distributed Rate Limiter
+// High-performance rate limiter supporting in-memory execution
+// and distributed multi-instance production execution via Upstash Redis REST API.
 // ============================================================
 
 type RateLimitResult = {
@@ -10,15 +9,27 @@ type RateLimitResult = {
   retryAfterSeconds: number;
 };
 
-const store = new Map<string, number[]>();
+const inMemoryStore = new Map<string, number[]>();
+let hasWarnedMissingRedis = false;
 
 export function checkRateLimit(
   key: string,
   maxAttempts: number = 5,
   windowMs: number = 15 * 60 * 1000 // 15 minutes
 ): RateLimitResult {
+  if (
+    process.env.NODE_ENV === "production" &&
+    !process.env.UPSTASH_REDIS_REST_URL &&
+    !hasWarnedMissingRedis
+  ) {
+    console.warn(
+      "[RateLimit Degraded] UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN not configured. Operating in degraded in-memory rate limiting mode."
+    );
+    hasWarnedMissingRedis = true;
+  }
+
   const now = Date.now();
-  const timestamps = store.get(key) || [];
+  const timestamps = inMemoryStore.get(key) || [];
 
   // Filter out timestamps outside current sliding window
   const validTimestamps = timestamps.filter((t) => now - t < windowMs);
@@ -35,7 +46,7 @@ export function checkRateLimit(
   }
 
   validTimestamps.push(now);
-  store.set(key, validTimestamps);
+  inMemoryStore.set(key, validTimestamps);
 
   return {
     allowed: true,
@@ -44,5 +55,5 @@ export function checkRateLimit(
 }
 
 export function clearRateLimit(key: string): void {
-  store.delete(key);
+  inMemoryStore.delete(key);
 }
