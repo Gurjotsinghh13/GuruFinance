@@ -2874,5 +2874,28 @@ describe("registration and user onboarding", () => {
     assert.equal(blockedRes.allowed, false);
     assert.equal(blockedRes.retryAfterSeconds > 0, true);
   });
+
+  it("configures required security headers in next.config.js", async () => {
+    const nextConfig = require("../next.config.js");
+    assert.equal(typeof nextConfig.headers, "function");
+
+    const headerConfigs = await nextConfig.headers();
+    assert.equal(headerConfigs.length > 0, true);
+    assert.equal(headerConfigs[0].source, "/:path*");
+
+    const headersList = headerConfigs[0].headers;
+    const headerKeys = headersList.map((h: any) => h.key);
+
+    assert.equal(headerKeys.includes("X-Content-Type-Options"), true);
+    assert.equal(headerKeys.includes("X-Frame-Options"), true);
+    assert.equal(headerKeys.includes("Referrer-Policy"), true);
+    assert.equal(headerKeys.includes("Permissions-Policy"), true);
+
+    const frameHeader = headersList.find((h: any) => h.key === "X-Frame-Options");
+    assert.equal(frameHeader.value, "DENY");
+
+    const nosniffHeader = headersList.find((h: any) => h.key === "X-Content-Type-Options");
+    assert.equal(nosniffHeader.value, "nosniff");
+  });
 });
 
