@@ -1,4 +1,5 @@
 import { getBorrowerLedgerAction } from "@/app/actions/borrowers";
+import { requireAuth } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import { BorrowerHeader } from "@/components/borrowers/BorrowerHeader";
 import { LoanCard } from "@/components/loans/LoanCard";
@@ -15,6 +16,7 @@ interface Props {
 
 export default async function BorrowerDetailPage({ params }: Props) {
   const { id } = await params;
+  const session = await requireAuth();
   const borrower = await getBorrowerLedgerAction(id);
 
   if (!borrower) notFound();
@@ -58,6 +60,7 @@ export default async function BorrowerDetailPage({ params }: Props) {
     .filter((loan) => loan.status === LoanStatus.ACTIVE)
     .map((loan) => loan.loanNumber);
   const whatsappLink = await buildBalanceReminderLink({
+    userId: session.id,
     phone: borrower.mobile,
     borrowerName: borrower.fullName,
     loanNumber:

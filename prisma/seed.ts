@@ -157,9 +157,18 @@ async function main() {
   for (const [type, template] of Object.entries(DEFAULT_TEMPLATES)) {
     if (type === "CUSTOM") continue;
     await prisma.settings.upsert({
-      where: { key: `whatsapp_template_${type}` },
+      where: {
+        userId_key: {
+          userId: user.id,
+          key: `whatsapp_template_${type}`,
+        },
+      },
       update: {},
-      create: { key: `whatsapp_template_${type}`, value: template },
+      create: {
+        userId: user.id,
+        key: `whatsapp_template_${type}`,
+        value: template,
+      },
     });
   }
 

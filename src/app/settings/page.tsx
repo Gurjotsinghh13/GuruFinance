@@ -10,6 +10,7 @@ export default async function SettingsPage() {
   // Load current templates from DB
   const savedSettings = await prisma.settings.findMany({
     where: {
+      userId: session.id,
       key: { startsWith: "whatsapp_template_" },
     },
   });

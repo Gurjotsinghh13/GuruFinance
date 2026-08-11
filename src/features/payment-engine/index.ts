@@ -206,7 +206,9 @@ export async function recordPayment(
   if (transactionResult.compoundedInterestPaid) {
     await regenerateFutureDues(
       input.loanId,
-      addDays(startOfDay(input.paymentDate), 1)
+      addDays(startOfDay(input.paymentDate), 1),
+      undefined,
+      { userId }
     );
   }
 
@@ -227,8 +229,11 @@ export async function recordPrincipalRepayment(
   userId: string
 ): Promise<{ newPrincipal: number; loanClosed: boolean }> {
   const result = await prisma.$transaction(async (tx) => {
-    const loan = await tx.loan.findUnique({
-      where: { id: input.loanId },
+    const loan = await tx.loan.findFirst({
+      where: {
+        id: input.loanId,
+        borrower: { userId },
+      },
       include: { interestDues: true },
     });
 
@@ -301,11 +306,13 @@ export async function recordPrincipalRepayment(
   // Outside transaction: regenerate dues
   if (input.amount > 0) {
     if (result.loanClosed) {
-      await stopDueGeneration(input.loanId);
+      await stopDueGeneration(input.loanId, { userId });
     } else {
       await regenerateFutureDues(
         input.loanId,
-        addDays(startOfDay(input.repaymentDate), 1)
+        addDays(startOfDay(input.repaymentDate), 1),
+        undefined,
+        { userId }
       );
     }
   }
@@ -323,7 +330,12 @@ export async function recordLoanTopUp(
   userId: string
 ): Promise<{ newPrincipal: number }> {
   const result = await prisma.$transaction(async (tx) => {
-    const loan = await tx.loan.findUnique({ where: { id: input.loanId } });
+    const loan = await tx.loan.findFirst({
+      where: {
+        id: input.loanId,
+        borrower: { userId },
+      },
+    });
     if (!loan) throw new Error("Loan not found");
 
     const currentPrincipal = Number(loan.currentPrincipal);
@@ -366,7 +378,9 @@ export async function recordLoanTopUp(
   // Regenerate future dues with new principal
   await regenerateFutureDues(
     input.loanId,
-    addDays(startOfDay(input.topUpDate), 1)
+    addDays(startOfDay(input.topUpDate), 1),
+    undefined,
+    { userId }
   );
 
   return result;

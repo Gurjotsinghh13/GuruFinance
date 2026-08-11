@@ -51,6 +51,7 @@ export default async function LoanDetailPage({ params }: Props) {
     })),
   });
   const balanceWhatsappLink = await buildBalanceReminderLink({
+    userId: session.id,
     phone: loan.borrower.mobile,
     borrowerName: loan.borrower.fullName,
     loanNumber: loan.loanNumber,

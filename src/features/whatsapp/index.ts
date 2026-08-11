@@ -76,10 +76,15 @@ Thank you`,
 // GET TEMPLATE (from DB or default)
 // ============================================================
 
-export async function getTemplate(type: MessageType): Promise<string> {
+export async function getTemplate(type: MessageType, userId: string): Promise<string> {
   try {
     const setting = await prisma.settings.findUnique({
-      where: { key: `whatsapp_template_${type}` },
+      where: {
+        userId_key: {
+          userId,
+          key: `whatsapp_template_${type}`,
+        },
+      },
     });
     return setting?.value || DEFAULT_TEMPLATES[type];
   } catch {
@@ -219,6 +224,7 @@ export function renderAccountStatementMessage(
 // ============================================================
 
 export async function buildDueReminderLink(params: {
+  userId: string;
   phone: string;
   borrowerName: string;
   amount: number;
@@ -226,7 +232,7 @@ export async function buildDueReminderLink(params: {
   loanNumber: string;
   interestType?: string;
 }, templateOverride?: string): Promise<string> {
-  const template = templateOverride ?? await getTemplate(MessageType.DUE_REMINDER);
+  const template = templateOverride ?? await getTemplate(MessageType.DUE_REMINDER, params.userId);
   const message = renderDueReminderMessage(template, params);
   return createWhatsAppLink(params.phone, message);
 }
@@ -236,6 +242,7 @@ export async function buildDueReminderLink(params: {
 // ============================================================
 
 export async function buildPaymentReceiptLink(params: {
+  userId: string;
   phone: string;
   borrowerName: string;
   amount: number;
@@ -247,7 +254,7 @@ export async function buildPaymentReceiptLink(params: {
   allocationDetails?: PaymentAllocationDetail[];
   interestType?: string;
 }, templateOverride?: string): Promise<string> {
-  const template = templateOverride ?? await getTemplate(MessageType.PAYMENT_RECEIPT);
+  const template = templateOverride ?? await getTemplate(MessageType.PAYMENT_RECEIPT, params.userId);
   const message = renderPaymentReceiptMessage(template, params);
   return createWhatsAppLink(params.phone, message);
 }
@@ -257,6 +264,7 @@ export async function buildPaymentReceiptLink(params: {
 // ============================================================
 
 export async function buildBalanceReminderLink(params: {
+  userId: string;
   phone: string;
   borrowerName: string;
   loanNumber: string;
@@ -265,7 +273,7 @@ export async function buildBalanceReminderLink(params: {
   totalOutstanding: number;
   interestType?: string;
 }, templateOverride?: string): Promise<string> {
-  const template = templateOverride ?? await getTemplate(MessageType.BALANCE_REMINDER);
+  const template = templateOverride ?? await getTemplate(MessageType.BALANCE_REMINDER, params.userId);
   const message = renderBalanceReminderMessage(template, params);
   return createWhatsAppLink(params.phone, message);
 }
@@ -275,6 +283,7 @@ export async function buildBalanceReminderLink(params: {
 // ============================================================
 
 export async function buildAccountStatementLink(params: {
+  userId: string;
   phone: string;
   borrowerName: string;
   loanNumber: string;
@@ -285,7 +294,7 @@ export async function buildAccountStatementLink(params: {
   outstandingPrincipal: number;
   interestType?: string;
 }, templateOverride?: string): Promise<string> {
-  const template = templateOverride ?? await getTemplate(MessageType.ACCOUNT_STATEMENT);
+  const template = templateOverride ?? await getTemplate(MessageType.ACCOUNT_STATEMENT, params.userId);
   const message = renderAccountStatementMessage(template, params);
   return createWhatsAppLink(params.phone, message);
 }

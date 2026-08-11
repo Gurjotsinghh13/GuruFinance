@@ -57,7 +57,7 @@ export default async function CollectionsPage({ searchParams }: Props) {
     0
   );
   const dueTemplate = dues.some((due) => due.dueDate <= todayStart)
-    ? await getTemplate(MessageType.DUE_REMINDER)
+    ? await getTemplate(MessageType.DUE_REMINDER, session.id)
     : undefined;
   const duesWithLinks = await Promise.all(
     dues.map(async (due) => {
@@ -69,6 +69,7 @@ export default async function CollectionsPage({ searchParams }: Props) {
         whatsappLink:
           due.dueDate <= todayStart
             ? await buildDueReminderLink({
+              userId: session.id,
                 phone: due.loan.borrower.mobile,
                 borrowerName: due.loan.borrower.fullName,
                 amount: remainingAmount,

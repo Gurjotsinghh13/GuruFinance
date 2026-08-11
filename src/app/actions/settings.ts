@@ -9,9 +9,18 @@ export async function saveTemplateAction(type: string, value: string): Promise<{
   const session = await requireAuth();
 
   await prisma.settings.upsert({
-    where: { key: `whatsapp_template_${type}` },
+    where: {
+      userId_key: {
+        userId: session.id,
+        key: `whatsapp_template_${type}`,
+      },
+    },
     update: { value },
-    create: { key: `whatsapp_template_${type}`, value },
+    create: {
+      userId: session.id,
+      key: `whatsapp_template_${type}`,
+      value,
+    },
   });
 
   await prisma.auditLog.create({

@@ -21,6 +21,59 @@ import {
 } from "@/features/interest-engine";
 import { addDays, addMonths, startOfDay, endOfDay } from "date-fns";
 
+type ExecutionScope = {
+  userId?: string;
+  system?: boolean;
+};
+
+async function findLoanByScope(
+  loanId: string,
+  scope: ExecutionScope | undefined,
+  includeInterestDues: true
+): Promise<
+  | (import("@prisma/client").Loan & {
+      interestDues: import("@prisma/client").InterestDue[];
+    })
+  | null
+>;
+async function findLoanByScope(
+  loanId: string,
+  scope?: ExecutionScope,
+  includeInterestDues?: false
+): Promise<import("@prisma/client").Loan | null>;
+async function findLoanByScope(
+  loanId: string,
+  scope?: ExecutionScope,
+  includeInterestDues: boolean = false
+) {
+  if (scope?.userId) {
+    return prisma.loan.findFirst({
+      where: {
+        id: loanId,
+        borrower: { userId: scope.userId },
+      },
+      include: includeInterestDues
+        ? {
+            interestDues: {
+              orderBy: { dueDate: "desc" },
+            },
+          }
+        : undefined,
+    });
+  }
+
+  return prisma.loan.findUnique({
+    where: { id: loanId },
+    include: includeInterestDues
+      ? {
+          interestDues: {
+            orderBy: { dueDate: "desc" },
+          },
+        }
+      : undefined,
+  });
+}
+
 // ============================================================
 // GENERATE DUES FOR A SINGLE LOAN
 // ============================================================
@@ -28,20 +81,14 @@ import { addDays, addMonths, startOfDay, endOfDay } from "date-fns";
 export async function generateDuesForLoan(
   loanId: string,
   upToDate?: Date,
-  fromDateOverride?: Date
+  fromDateOverride?: Date,
+  scope?: ExecutionScope
 ): Promise<{ generated: number; errors: string[] }> {
   const errors: string[] = [];
   let generated = 0;
 
   try {
-    const loan = await prisma.loan.findUnique({
-      where: { id: loanId },
-      include: {
-        interestDues: {
-          orderBy: { dueDate: "desc" },
-        },
-      },
-    });
+    const loan = await findLoanByScope(loanId, scope, true);
 
     if (!loan) {
       errors.push(`Loan ${loanId} not found`);
@@ -157,7 +204,9 @@ export async function generateDuesForAllLoans(): Promise<{
   });
 
   for (const loan of activeLoans) {
-    const result = await generateDuesForLoan(loan.id);
+    const result = await generateDuesForLoan(loan.id, undefined, undefined, {
+      system: true,
+    });
     processed++;
     totalGenerated += result.generated;
     allErrors.push(...result.errors);
@@ -271,7 +320,9 @@ export async function capitalizeOverdueInterest(
 
     if (loanChanged) {
       loansUpdated += 1;
-      await regenerateFutureDues(loan.id, addDays(today, 1));
+      await regenerateFutureDues(loan.id, addDays(today, 1), undefined, {
+        system: true,
+      });
     }
   }
 
@@ -288,21 +339,27 @@ export async function capitalizeOverdueInterest(
 export async function regenerateFutureDues(
   loanId: string,
   fromDate: Date,
-  upToDate?: Date
+  upToDate?: Date,
+  scope?: ExecutionScope
 ): Promise<{ deleted: number; generated: number }> {
+  const scopedLoan = await findLoanByScope(loanId, scope, false);
+  if (!scopedLoan) {
+    throw new Error("Loan not found");
+  }
+
   const from = startOfDay(fromDate);
 
   // Delete future pending dues only (don't touch paid/overdue)
   const deleteResult = await prisma.interestDue.deleteMany({
     where: {
-      loanId,
+      loanId: scopedLoan.id,
       dueDate: { gte: from },
       status: DueStatus.PENDING,
     },
   });
 
   const loan = await prisma.loan.findUnique({
-    where: { id: loanId },
+    where: { id: scopedLoan.id },
     include: {
       interestDues: {
         orderBy: { dueDate: "asc" },
@@ -354,7 +411,12 @@ export async function regenerateFutureDues(
   }
 
   const generationFrom = addDays(from, -1);
-  const generateResult = await generateDuesForLoan(loanId, upToDate, generationFrom);
+  const generateResult = await generateDuesForLoan(
+    scopedLoan.id,
+    upToDate,
+    generationFrom,
+    scope
+  );
 
   return {
     deleted: deleteResult.count,
@@ -367,12 +429,20 @@ export async function regenerateFutureDues(
 // Deletes all future pending dues for a closed loan.
 // ============================================================
 
-export async function stopDueGeneration(loanId: string): Promise<{ deleted: number }> {
+export async function stopDueGeneration(
+  loanId: string,
+  scope?: ExecutionScope
+): Promise<{ deleted: number }> {
+  const scopedLoan = await findLoanByScope(loanId, scope, false);
+  if (!scopedLoan) {
+    throw new Error("Loan not found");
+  }
+
   const now = startOfDay(new Date());
 
   const result = await prisma.interestDue.deleteMany({
     where: {
-      loanId,
+      loanId: scopedLoan.id,
       dueDate: { gt: now },
       status: DueStatus.PENDING,
     },

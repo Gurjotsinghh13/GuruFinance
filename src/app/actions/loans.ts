@@ -64,7 +64,9 @@ export async function createLoanAction(input: CreateLoanInput): Promise<{
   });
 
   // Generate dues for next 3 months
-  await generateDuesForLoan(loan.id);
+  await generateDuesForLoan(loan.id, undefined, undefined, {
+    userId: session.id,
+  });
 
   await prisma.auditLog.create({
     data: {
@@ -135,7 +137,7 @@ export async function closeLoanAction(
   });
 
   // Stop future due generation
-  await stopDueGeneration(loanId);
+  await stopDueGeneration(loanId, { userId: session.id });
 
   await prisma.auditLog.create({
     data: {

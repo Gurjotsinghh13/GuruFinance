@@ -79,6 +79,7 @@ export async function recordPaymentAction(input: RecordPaymentInput): Promise<{
         })),
       });
       receiptWhatsappLink = await buildPaymentReceiptLink({
+        userId: session.id,
         phone: updatedLoan.borrower.mobile,
         borrowerName: updatedLoan.borrower.fullName,
         amount: input.amount,
@@ -112,6 +113,7 @@ function dueRemainingAmount(due: { dueAmount: any; paidAmount: any; waivedAmount
 
 async function mapTodayCollections(
   dues: any[],
+  userId: string,
   templateOverride?: string
 ): Promise<TodayCollection[]> {
   return Promise.all(
@@ -132,6 +134,7 @@ async function mapTodayCollections(
         dueDate: due.dueDate,
         whatsappLink: await buildDueReminderLink(
           {
+            userId,
             phone: due.loan.borrower.mobile,
             borrowerName: due.loan.borrower.fullName,
             amount: remainingAmount,
@@ -151,6 +154,7 @@ async function mapTodayCollections(
 
 async function mapOverdueAccounts(
   overdueDues: any[],
+  userId: string,
   templateOverride?: string
 ): Promise<OverdueAccount[]> {
   const byBorrower = new Map<
@@ -207,6 +211,7 @@ async function mapOverdueAccounts(
       ...account,
       whatsappLink: await buildBalanceReminderLink(
         {
+          userId,
           phone: account.mobile,
           borrowerName: account.borrowerName,
           loanNumber: account.loanNumber,
@@ -263,8 +268,8 @@ export async function getTodayCollectionsAction(): Promise<TodayCollection[]> {
     orderBy: { dueDate: "asc" },
   });
 
-  const dueTemplate = await getTemplate(MessageType.DUE_REMINDER);
-  return mapTodayCollections(dues, dueTemplate);
+  const dueTemplate = await getTemplate(MessageType.DUE_REMINDER, session.id);
+  return mapTodayCollections(dues, session.id, dueTemplate);
 }
 
 // ============================================================
@@ -293,8 +298,8 @@ export async function getOverdueAccountsAction(): Promise<OverdueAccount[]> {
     orderBy: { daysOverdue: "desc" },
   });
 
-  const balanceTemplate = await getTemplate(MessageType.BALANCE_REMINDER);
-  return mapOverdueAccounts(overdueDues, balanceTemplate);
+  const balanceTemplate = await getTemplate(MessageType.BALANCE_REMINDER, session.id);
+  return mapOverdueAccounts(overdueDues, session.id, balanceTemplate);
 }
 
 // ============================================================
@@ -604,8 +609,8 @@ export async function getDashboardDataAction(): Promise<DashboardData> {
     .slice(0, 10);
 
   const [dueTemplate, balanceTemplate] = await Promise.all([
-    getTemplate(MessageType.DUE_REMINDER),
-    getTemplate(MessageType.BALANCE_REMINDER),
+    getTemplate(MessageType.DUE_REMINDER, session.id),
+    getTemplate(MessageType.BALANCE_REMINDER, session.id),
   ]);
 
   const pendingInterest = pendingDues.reduce(
@@ -630,8 +635,8 @@ export async function getDashboardDataAction(): Promise<DashboardData> {
       overdueInterest,
       overdueCount: overdueDues.length,
     },
-    todayCollections: await mapTodayCollections(todayDues, dueTemplate),
-    overdueAccounts: await mapOverdueAccounts(visibleOverdueDues, balanceTemplate),
+    todayCollections: await mapTodayCollections(todayDues, session.id, dueTemplate),
+    overdueAccounts: await mapOverdueAccounts(visibleOverdueDues, session.id, balanceTemplate),
     collectedToday: mapCollectedTodayPayments(collectedTodayPayments),
   };
 }

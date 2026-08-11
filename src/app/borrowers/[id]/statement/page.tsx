@@ -64,6 +64,7 @@ export default async function BorrowerStatementPage({ params }: Props) {
   );
   const activeLoans = borrower.loans.filter((loan) => loan.status === "ACTIVE");
   const whatsappLink = await buildAccountStatementLink({
+    userId: session.id,
     phone: borrower.mobile,
     borrowerName: borrower.fullName,
     loanNumber:

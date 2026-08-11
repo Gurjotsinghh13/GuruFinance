@@ -24,6 +24,10 @@ function loadPaymentEngine(mockPrisma: MockPrisma, dueEngineCalls: any = {}) {
   delete require.cache[dueEnginePath];
   delete require.cache[paymentEnginePath];
 
+  if (mockPrisma?.loan && !mockPrisma.loan.findFirst && mockPrisma.loan.findUnique) {
+    mockPrisma.loan.findFirst = mockPrisma.loan.findUnique;
+  }
+
   require.cache[prismaPath] = {
     id: prismaPath,
     filename: prismaPath,
@@ -217,6 +221,45 @@ function loadPaymentActions(mockPrisma: MockPrisma, options: any = {}) {
   return require("../src/app/actions/payments");
 }
 
+function loadSettingsActions(mockPrisma: MockPrisma, options: any = {}) {
+  const prismaPath = require.resolve("../src/lib/prisma");
+  const authPath = require.resolve("../src/lib/auth");
+  const nextCachePath = require.resolve("next/cache");
+  const settingsActionsPath = require.resolve("../src/app/actions/settings");
+
+  delete require.cache[prismaPath];
+  delete require.cache[authPath];
+  delete require.cache[nextCachePath];
+  delete require.cache[settingsActionsPath];
+
+  require.cache[prismaPath] = {
+    id: prismaPath,
+    filename: prismaPath,
+    loaded: true,
+    exports: { prisma: mockPrisma },
+  } as NodeModule;
+
+  require.cache[authPath] = {
+    id: authPath,
+    filename: authPath,
+    loaded: true,
+    exports: {
+      requireAuth: async () => options.session || { id: "user-1" },
+    },
+  } as NodeModule;
+
+  require.cache[nextCachePath] = {
+    id: nextCachePath,
+    filename: nextCachePath,
+    loaded: true,
+    exports: {
+      revalidatePath: options.revalidatePath || (() => undefined),
+    },
+  } as NodeModule;
+
+  return require("../src/app/actions/settings");
+}
+
 function loadWhatsAppFeature(mockPrisma: MockPrisma) {
   const prismaPath = require.resolve("../src/lib/prisma");
   const whatsappPath = require.resolve("../src/features/whatsapp");
@@ -384,6 +427,7 @@ describe("WhatsApp template rendering", () => {
     });
 
     const link = await buildDueReminderLink({
+      userId: "user-1",
       phone: "98765 43210",
       borrowerName: "Gurjot Singh",
       amount: 2250,
@@ -393,7 +437,10 @@ describe("WhatsApp template rendering", () => {
     const url = new URL(link);
 
     assert.deepEqual(templateLookups[0].where, {
-      key: `whatsapp_template_${MessageType.DUE_REMINDER}`,
+      userId_key: {
+        userId: "user-1",
+        key: `whatsapp_template_${MessageType.DUE_REMINDER}`,
+      },
     });
     assert.equal(url.hostname, "wa.me");
     assert.equal(url.pathname, "/919876543210");
@@ -417,6 +464,7 @@ describe("WhatsApp template rendering", () => {
     });
 
     const params = {
+      userId: "user-1",
       phone: "98765 43210",
       borrowerName: "Gurjot Singh",
       amount: 2250,
@@ -1734,6 +1782,119 @@ describe("dashboard statistics", () => {
     assert.equal(dashboard.overdueAccounts[0].totalOverdue, 3000);
     assert.equal(dashboard.collectedToday.length, 1);
     assert.equal(dashboard.collectedToday[0].amount, 1000);
+  });
+});
+
+describe("ownership isolation hardening", () => {
+  it("scopes settings upsert by authenticated user", async () => {
+    const upsertCalls: any[] = [];
+
+    const { saveTemplateAction } = loadSettingsActions({
+      settings: {
+        upsert: async (args: any) => {
+          upsertCalls.push(args);
+          return args;
+        },
+      },
+      auditLog: { create: async () => ({}) },
+    });
+
+    await saveTemplateAction(MessageType.DUE_REMINDER, "Template A");
+
+    assert.deepEqual(upsertCalls[0].where, {
+      userId_key: {
+        userId: "user-1",
+        key: `whatsapp_template_${MessageType.DUE_REMINDER}`,
+      },
+    });
+    assert.equal(upsertCalls[0].create.userId, "user-1");
+  });
+
+  it("rejects principal repayment when loan does not belong to authenticated user", async () => {
+    const { recordPrincipalRepayment } = loadPaymentEngine({
+      $transaction: async (callback: any) => callback({
+        loan: {
+          findFirst: async () => null,
+        },
+      }),
+    }, {
+      regenerateFutureDues: async () => undefined,
+      stopDueGeneration: async () => undefined,
+    });
+
+    await assert.rejects(
+      recordPrincipalRepayment(
+        {
+          loanId: "foreign-loan",
+          amount: 1000,
+          repaymentDate: new Date("2026-08-11"),
+        },
+        "user-a"
+      ),
+      /Loan not found/
+    );
+  });
+
+  it("rejects loan top-up when loan does not belong to authenticated user", async () => {
+    const { recordLoanTopUp } = loadPaymentEngine({
+      $transaction: async (callback: any) => callback({
+        loan: {
+          findFirst: async () => null,
+        },
+      }),
+    }, {
+      regenerateFutureDues: async () => undefined,
+      stopDueGeneration: async () => undefined,
+    });
+
+    await assert.rejects(
+      recordLoanTopUp(
+        {
+          loanId: "foreign-loan",
+          amount: 1000,
+          topUpDate: new Date("2026-08-11"),
+        },
+        "user-a"
+      ),
+      /Loan not found/
+    );
+  });
+
+  it("rejects due regeneration for a loan outside user ownership", async () => {
+    const { regenerateFutureDues } = loadDueEngine({
+      loan: {
+        findFirst: async () => null,
+      },
+      interestDue: {
+        deleteMany: async () => ({ count: 0 }),
+      },
+    });
+
+    await assert.rejects(
+      regenerateFutureDues(
+        "foreign-loan",
+        new Date("2026-08-11"),
+        undefined,
+        { userId: "user-a" }
+      ),
+      /Loan not found/
+    );
+  });
+
+  it("rejects stop due generation for a loan outside user ownership", async () => {
+    const { stopDueGeneration } = loadDueEngine({
+      loan: {
+        findFirst: async () => null,
+      },
+      interestDue: {
+        deleteMany: async () => ({ count: 0 }),
+      },
+    });
+
+    await assert.rejects(
+      stopDueGeneration("foreign-loan", { userId: "user-a" }),
+      /Loan not found/
+    );
   });
 });
 
