@@ -24,6 +24,7 @@ export async function createSessionToken(user: SessionUser): Promise<string> {
     name: user.name,
     mobile: user.mobile,
     role: user.role,
+    tokenVersion: user.tokenVersion ?? 1,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -65,7 +66,7 @@ export async function getSession(): Promise<SessionUser | null> {
 
 // ============================================================
 // REQUIRE AUTH (for server components and actions)
-// Redirects to login if not authenticated.
+// Redirects to login if not authenticated or session invalidated.
 // ============================================================
 
 export async function requireAuth(): Promise<SessionUser> {
@@ -73,6 +74,19 @@ export async function requireAuth(): Promise<SessionUser> {
   if (!session) {
     redirect("/login");
   }
+
+  if (session.tokenVersion !== undefined) {
+    const user = await prisma.user.findUnique({
+      where: { id: session.id },
+      select: { tokenVersion: true, isActive: true },
+    });
+
+    if (!user || !user.isActive || user.tokenVersion !== session.tokenVersion) {
+      await clearSession();
+      redirect("/login");
+    }
+  }
+
   return session;
 }
 

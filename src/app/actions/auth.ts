@@ -15,7 +15,8 @@ import {
 } from "@/lib/auth";
 import { AuditAction } from "@prisma/client";
 import { redirect } from "next/navigation";
-import { generateResetToken } from "@/utils";
+import { generateResetToken, hashResetToken } from "@/utils";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 // ============================================================
 // LOGIN
@@ -24,11 +25,19 @@ import { generateResetToken } from "@/utils";
 export async function loginAction(formData: FormData): Promise<{
   error?: string;
 }> {
-  const mobile = formData.get("mobile") as string;
+  const rawMobile = formData.get("mobile") as string;
   const password = formData.get("password") as string;
 
-  if (!mobile || !password) {
+  if (!rawMobile || !password) {
     return { error: "Mobile number and password are required" };
+  }
+
+  const mobile = rawMobile.trim().replace(/[\s\-\(\)]/g, "");
+  const rateLimit = checkRateLimit(`login:${mobile}`, 5, 15 * 60 * 1000);
+  if (!rateLimit.allowed) {
+    return {
+      error: `Too many login attempts. Please try again in ${rateLimit.retryAfterSeconds} seconds.`,
+    };
   }
 
   const user = await prisma.user.findUnique({ where: { mobile } });
@@ -47,6 +56,7 @@ export async function loginAction(formData: FormData): Promise<{
     name: user.name,
     mobile: user.mobile,
     role: user.role,
+    tokenVersion: user.tokenVersion,
   });
 
   await setSessionCookie(token);
@@ -122,7 +132,10 @@ export async function changePasswordAction(formData: FormData): Promise<{
   const newHash = await hashPassword(newPassword);
   await prisma.user.update({
     where: { id: session.id },
-    data: { passwordHash: newHash },
+    data: {
+      passwordHash: newHash,
+      tokenVersion: { increment: 1 },
+    },
   });
 
   await prisma.auditLog.create({
@@ -141,23 +154,36 @@ export async function changePasswordAction(formData: FormData): Promise<{
 // FORGOT PASSWORD (generates reset token)
 // ============================================================
 
-export async function forgotPasswordAction(mobile: string): Promise<{
+export async function forgotPasswordAction(rawMobile: string): Promise<{
   error?: string;
   success?: boolean;
   token?: string; // In production, send via SMS
 }> {
+  if (!rawMobile) {
+    return { success: true };
+  }
+
+  const mobile = rawMobile.trim().replace(/[\s\-\(\)]/g, "");
+  const rateLimit = checkRateLimit(`forgot:${mobile}`, 3, 15 * 60 * 1000);
+  if (!rateLimit.allowed) {
+    return {
+      error: `Too many password reset requests. Please try again in ${rateLimit.retryAfterSeconds} seconds.`,
+    };
+  }
+
   const user = await prisma.user.findUnique({ where: { mobile } });
 
   // Always return success to prevent enumeration
   if (!user) return { success: true };
 
-  const resetToken = generateResetToken();
+  const rawToken = generateResetToken();
+  const tokenHash = hashResetToken(rawToken);
   const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
   await prisma.user.update({
     where: { id: user.id },
     data: {
-      resetToken,
+      resetToken: tokenHash,
       resetTokenExpiry: expiry,
     },
   });
@@ -166,7 +192,7 @@ export async function forgotPasswordAction(mobile: string): Promise<{
   // For now: return token (show in dev only)
   return {
     success: true,
-    token: process.env.NODE_ENV === "development" ? resetToken : undefined,
+    token: process.env.NODE_ENV === "development" ? rawToken : undefined,
   };
 }
 
@@ -175,12 +201,24 @@ export async function forgotPasswordAction(mobile: string): Promise<{
 // ============================================================
 
 export async function resetPasswordAction(
-  token: string,
+  rawToken: string,
   newPassword: string
 ): Promise<{ error?: string; success?: boolean }> {
+  if (!rawToken || !newPassword) {
+    return { error: "Invalid parameters" };
+  }
+
+  const tokenHash = hashResetToken(rawToken.trim());
+  const rateLimit = checkRateLimit(`reset:${tokenHash}`, 5, 15 * 60 * 1000);
+  if (!rateLimit.allowed) {
+    return {
+      error: `Too many reset attempts. Please try again in ${rateLimit.retryAfterSeconds} seconds.`,
+    };
+  }
+
   const user = await prisma.user.findFirst({
     where: {
-      resetToken: token,
+      resetToken: tokenHash,
       resetTokenExpiry: { gt: new Date() },
     },
   });
@@ -192,6 +230,7 @@ export async function resetPasswordAction(
     where: { id: user.id },
     data: {
       passwordHash: newHash,
+      tokenVersion: { increment: 1 },
       resetToken: null,
       resetTokenExpiry: null,
     },
@@ -221,6 +260,13 @@ export async function registerAction(formData: FormData): Promise<{
     return { error: "Please enter a valid mobile number (at least 10 digits)" };
   }
 
+  const rateLimit = checkRateLimit(`register:${mobile}`, 3, 15 * 60 * 1000);
+  if (!rateLimit.allowed) {
+    return {
+      error: `Too many registration attempts. Please try again in ${rateLimit.retryAfterSeconds} seconds.`,
+    };
+  }
+
   if (!password || password.length < 8) {
     return { error: "Password must be at least 8 characters long" };
   }
@@ -245,6 +291,7 @@ export async function registerAction(formData: FormData): Promise<{
         passwordHash,
         role: "ADMIN",
         isActive: true,
+        tokenVersion: 1,
       },
     });
   } catch (err: any) {
@@ -259,6 +306,7 @@ export async function registerAction(formData: FormData): Promise<{
     name: user.name,
     mobile: user.mobile,
     role: user.role,
+    tokenVersion: user.tokenVersion,
   });
 
   await setSessionCookie(token);
@@ -271,7 +319,7 @@ export async function registerAction(formData: FormData): Promise<{
   await prisma.auditLog.create({
     data: {
       userId: user.id,
-      action: AuditAction.USER_LOGIN,
+      action: AuditAction.USER_REGISTERED,
       entityType: "User",
       entityId: user.id,
       details: { method: "registration" },

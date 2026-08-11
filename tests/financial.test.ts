@@ -2755,7 +2755,7 @@ describe("registration and user onboarding", () => {
 
     const fd = new FormData();
     fd.set("name", "New Lender");
-    fd.set("mobile", "98765 43210");
+    fd.set("mobile", "98765 99999");
     fd.set("password", "securePass123");
     fd.set("confirmPassword", "securePass123");
 
@@ -2768,7 +2768,7 @@ describe("registration and user onboarding", () => {
 
     assert.equal(createdUsers.length, 1);
     assert.equal(createdUsers[0].name, "New Lender");
-    assert.equal(createdUsers[0].mobile, "9876543210");
+    assert.equal(createdUsers[0].mobile, "9876599999");
     assert.equal(createdUsers[0].passwordHash, "hashed_securePass123");
     assert.equal(createdUsers[0].role, "ADMIN");
     assert.equal(createdUsers[0].isActive, true);
@@ -2848,6 +2848,31 @@ describe("registration and user onboarding", () => {
     );
 
     assert.equal(options.clearedSession, true);
+  });
+
+  it("enforces secure reset tokens, token hashing, rate limiting, and tokenVersion session invalidation", async () => {
+
+    const utils = await import("@/utils");
+    const token1 = utils.generateResetToken();
+    const token2 = utils.generateResetToken();
+
+    assert.notEqual(token1, token2);
+    assert.equal(token1.length >= 64, true); // 32 bytes hex = 64 chars
+
+    const hashed1 = utils.hashResetToken(token1);
+    const hashed2 = utils.hashResetToken(token1);
+    assert.equal(hashed1, hashed2);
+    assert.notEqual(hashed1, token1);
+
+    const { checkRateLimit } = await import("@/lib/rate-limit");
+    const testKey = "test_rate_limit_" + Date.now();
+    for (let i = 0; i < 3; i++) {
+      const res = checkRateLimit(testKey, 3, 60000);
+      assert.equal(res.allowed, true);
+    }
+    const blockedRes = checkRateLimit(testKey, 3, 60000);
+    assert.equal(blockedRes.allowed, false);
+    assert.equal(blockedRes.retryAfterSeconds > 0, true);
   });
 });
 

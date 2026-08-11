@@ -22,8 +22,14 @@ export function generateReceiptNumber(): string {
   return `RCT-${date}-${random}`;
 }
 
+import crypto from "crypto";
+
 export function generateResetToken(): string {
-  return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  return crypto.randomBytes(32).toString("hex");
+}
+
+export function hashResetToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
 }
 
 // ============================================================

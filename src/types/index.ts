@@ -313,4 +313,5 @@ export type SessionUser = {
   name: string;
   mobile: string;
   role: Role;
+  tokenVersion?: number;
 };

@@ -97,6 +97,7 @@ enum AuditAction {
   SETTINGS_UPDATED
   USER_LOGIN
   USER_LOGOUT
+  USER_REGISTERED
   PASSWORD_CHANGED
 }
 
@@ -111,6 +112,7 @@ model User {
   passwordHash      String
   role              Role      @default(ADMIN)
   isActive          Boolean   @default(true)
+  tokenVersion      Int       @default(1)
 
   // Password reset
   resetToken        String?
