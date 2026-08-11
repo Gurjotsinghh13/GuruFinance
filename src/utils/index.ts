@@ -33,6 +33,17 @@ export function hashResetToken(token: string): string {
 }
 
 // ============================================================
+// EMAIL NORMALIZATION
+// Single canonical normalization function for all auth flows.
+// Trim whitespace + lowercase. Use before any email comparison,
+// storage, or rate-limit key generation.
+// ============================================================
+
+export function normalizeEmail(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
+// ============================================================
 // CURRENCY FORMATTER
 // ============================================================
 

@@ -2,6 +2,8 @@
 
 // ============================================================
 // AUTH SERVER ACTIONS
+// Authentication identifier: EMAIL + PASSWORD
+// Mobile is stored as contact information only.
 // ============================================================
 
 import { prisma } from "@/lib/prisma";
@@ -16,9 +18,9 @@ import {
 } from "@/lib/auth";
 import { AuditAction } from "@prisma/client";
 import { redirect } from "next/navigation";
-import { generateResetToken, hashResetToken } from "@/utils";
+import { generateResetToken, hashResetToken, normalizeEmail } from "@/utils";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { sendPasswordResetSMS } from "@/lib/sms";
+import { sendPasswordResetEmail } from "@/lib/email";
 
 // ============================================================
 // LOGIN
@@ -27,36 +29,36 @@ import { sendPasswordResetSMS } from "@/lib/sms";
 export async function loginAction(formData: FormData): Promise<{
   error?: string;
 }> {
-  const rawMobile = formData.get("mobile") as string;
+  const rawEmail = formData.get("email") as string;
   const password = formData.get("password") as string;
 
-  if (!rawMobile || !password) {
-    return { error: "Mobile number and password are required" };
+  if (!rawEmail || !password) {
+    return { error: "Email and password are required" };
   }
 
-  const mobile = rawMobile.trim().replace(/[\s\-\(\)]/g, "");
-  const rateLimit = checkRateLimit(`login:${mobile}`, 5, 15 * 60 * 1000);
+  const email = normalizeEmail(rawEmail);
+  const rateLimit = checkRateLimit(`login:${email}`, 5, 15 * 60 * 1000);
   if (!rateLimit.allowed) {
     return {
       error: `Too many login attempts. Please try again in ${rateLimit.retryAfterSeconds} seconds.`,
     };
   }
 
-  const user = await prisma.user.findUnique({ where: { mobile } });
+  const user = await prisma.user.findUnique({ where: { email } });
 
   if (!user || !user.isActive) {
-    return { error: "Invalid mobile number or password" };
+    return { error: "Invalid email or password" };
   }
 
   const isValid = await verifyPassword(password, user.passwordHash);
   if (!isValid) {
-    return { error: "Invalid mobile number or password" };
+    return { error: "Invalid email or password" };
   }
 
   const token = await createSessionToken({
     id: user.id,
     name: user.name,
-    mobile: user.mobile,
+    email: user.email!,
     role: user.role,
     tokenVersion: user.tokenVersion,
   });
@@ -153,27 +155,33 @@ export async function changePasswordAction(formData: FormData): Promise<{
 }
 
 // ============================================================
-// FORGOT PASSWORD (generates reset token)
+// FORGOT PASSWORD (generates reset token, delivers via email)
 // ============================================================
 
-export async function forgotPasswordAction(rawMobile: string): Promise<{
+export async function forgotPasswordAction(rawEmail: string): Promise<{
   error?: string;
   success?: boolean;
-  token?: string; // In production, send via SMS
+  token?: string; // In development only — never exposed in production
 }> {
-  if (!rawMobile) {
+  if (!rawEmail) {
     return { success: true };
   }
 
-  const mobile = rawMobile.trim().replace(/[\s\-\(\)]/g, "");
-  const rateLimit = checkRateLimit(`forgot:${mobile}`, 3, 15 * 60 * 1000);
+  const email = normalizeEmail(rawEmail);
+
+  // Basic email format guard
+  if (!email.includes("@") || !email.includes(".")) {
+    return { success: true }; // Silent — prevent enumeration
+  }
+
+  const rateLimit = checkRateLimit(`forgot-password:${email}`, 3, 15 * 60 * 1000);
   if (!rateLimit.allowed) {
     return {
       error: `Too many password reset requests. Please try again in ${rateLimit.retryAfterSeconds} seconds.`,
     };
   }
 
-  const user = await prisma.user.findUnique({ where: { mobile } });
+  const user = await prisma.user.findUnique({ where: { email } });
 
   // Always return success to prevent enumeration
   if (!user) return { success: true };
@@ -190,7 +198,7 @@ export async function forgotPasswordAction(rawMobile: string): Promise<{
     },
   });
 
-  await sendPasswordResetSMS(mobile, rawToken);
+  await sendPasswordResetEmail(email, rawToken);
 
   return {
     success: true,
@@ -211,7 +219,7 @@ export async function resetPasswordAction(
   }
 
   const tokenHash = hashResetToken(rawToken.trim());
-  const rateLimit = checkRateLimit(`reset:${tokenHash}`, 5, 15 * 60 * 1000);
+  const rateLimit = checkRateLimit(`reset-password:${tokenHash}`, 5, 15 * 60 * 1000);
   if (!rateLimit.allowed) {
     return {
       error: `Too many reset attempts. Please try again in ${rateLimit.retryAfterSeconds} seconds.`,
@@ -249,6 +257,7 @@ export async function registerAction(formData: FormData): Promise<{
   error?: string;
 }> {
   const name = (formData.get("name") as string)?.trim();
+  const rawEmail = formData.get("email") as string;
   const rawMobile = formData.get("mobile") as string;
   const password = formData.get("password") as string;
   const confirmPassword = formData.get("confirmPassword") as string;
@@ -257,12 +266,19 @@ export async function registerAction(formData: FormData): Promise<{
     return { error: "Full name must be at least 2 characters long" };
   }
 
+  // Email validation
+  const email = rawEmail ? normalizeEmail(rawEmail) : "";
+  if (!email || !email.includes("@") || !email.includes(".") || email.length < 5) {
+    return { error: "Please enter a valid email address" };
+  }
+
+  // Mobile validation (contact info, required)
   const mobile = rawMobile ? rawMobile.trim().replace(/[\s\-\(\)]/g, "") : "";
   if (!mobile || mobile.length < 10) {
     return { error: "Please enter a valid mobile number (at least 10 digits)" };
   }
 
-  const rateLimit = checkRateLimit(`register:${mobile}`, 3, 15 * 60 * 1000);
+  const rateLimit = checkRateLimit(`register:${email}`, 3, 15 * 60 * 1000);
   if (!rateLimit.allowed) {
     return {
       error: `Too many registration attempts. Please try again in ${rateLimit.retryAfterSeconds} seconds.`,
@@ -277,9 +293,9 @@ export async function registerAction(formData: FormData): Promise<{
     return { error: "Passwords do not match" };
   }
 
-  const existingUser = await prisma.user.findUnique({ where: { mobile } });
+  const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) {
-    return { error: "An account with this mobile number already exists" };
+    return { error: "An account with this email already exists" };
   }
 
   const passwordHash = await hashPassword(password);
@@ -289,6 +305,7 @@ export async function registerAction(formData: FormData): Promise<{
     user = await prisma.user.create({
       data: {
         name,
+        email,
         mobile,
         passwordHash,
         role: "ADMIN",
@@ -298,7 +315,15 @@ export async function registerAction(formData: FormData): Promise<{
     });
   } catch (err: any) {
     if (err.code === "P2002") {
-      return { error: "An account with this mobile number already exists" };
+      // Determine which unique field caused the conflict
+      const target = err.meta?.target as string[] | undefined;
+      if (target?.includes("email")) {
+        return { error: "An account with this email already exists" };
+      }
+      if (target?.includes("mobile")) {
+        return { error: "An account with this mobile number already exists" };
+      }
+      return { error: "An account with these details already exists" };
     }
     return { error: "Failed to create account. Please try again." };
   }
@@ -306,7 +331,7 @@ export async function registerAction(formData: FormData): Promise<{
   const token = await createSessionToken({
     id: user.id,
     name: user.name,
-    mobile: user.mobile,
+    email: user.email!,
     role: user.role,
     tokenVersion: user.tokenVersion,
   });
@@ -333,6 +358,8 @@ export async function registerAction(formData: FormData): Promise<{
 
 // ============================================================
 // UPDATE ACCOUNT DETAILS (Name & Mobile Number)
+// Email is NOT user-editable here — changing email is a separate
+// security operation requiring re-verification.
 // ============================================================
 
 export async function updateAccountAction(formData: FormData): Promise<{
@@ -364,11 +391,11 @@ export async function updateAccountAction(formData: FormData): Promise<{
     data: { name, mobile },
   });
 
-  // Re-issue updated session cookie
+  // Re-issue updated session cookie (name may have changed)
   const token = await createSessionToken({
     id: updatedUser.id,
     name: updatedUser.name,
-    mobile: updatedUser.mobile,
+    email: updatedUser.email!,
     role: updatedUser.role,
     tokenVersion: updatedUser.tokenVersion,
   });
@@ -445,4 +472,3 @@ export async function exportUserDataAction(): Promise<{
 
   return { csvData: csvContent, filename };
 }
-

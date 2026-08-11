@@ -7,6 +7,12 @@ import { MessageType } from "@prisma/client";
 export default async function SettingsPage() {
   const session = await requireAuth();
 
+  // Fetch full user record to get contact fields not stored in JWT
+  const dbUser = await prisma.user.findUniqueOrThrow({
+    where: { id: session.id },
+    select: { mobile: true },
+  });
+
   // Load current templates from DB
   const savedSettings = await prisma.settings.findMany({
     where: {
@@ -25,5 +31,5 @@ export default async function SettingsPage() {
       };
     });
 
-  return <SettingsClient user={session} templates={templates} />;
+  return <SettingsClient user={session} mobile={dbUser.mobile} templates={templates} />;
 }

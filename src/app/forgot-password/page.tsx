@@ -18,17 +18,23 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setError(null);
     const fd = new FormData(e.currentTarget);
-    const mobile = fd.get("mobile") as string;
+    const email = fd.get("email") as string;
 
     startTransition(async () => {
-      const result = await forgotPasswordAction(mobile);
+      const result = await forgotPasswordAction(email);
       if (result.token) {
         // Dev mode: show token directly
         setToken(result.token);
-        setMessage(`Dev mode: Your reset token is shown below. In production, this would be sent via SMS.`);
+        setMessage(
+          `Dev mode: Your reset token is shown below. In production, this would be sent via email.`
+        );
         setStep("reset");
+      } else if (result.error) {
+        setError(result.error);
       } else {
-        setMessage("If this mobile number is registered, a reset link has been sent.");
+        setMessage(
+          "If this email address is registered, a password reset link has been sent."
+        );
       }
     });
   }
@@ -66,7 +72,7 @@ export default function ForgotPasswordPage() {
         </div>
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900">LoanBook</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Smart Loan & Interest Management</p>
+          <p className="text-sm text-gray-500 mt-0.5">Smart Loan &amp; Interest Management</p>
         </div>
       </div>
 
@@ -83,24 +89,32 @@ export default function ForgotPasswordPage() {
         {step === "request" && (
           <form onSubmit={handleRequest} className="space-y-4">
             <p className="text-sm text-gray-500">
-              Enter your registered mobile number to reset your password.
+              Enter your registered email address to receive a password reset link.
             </p>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Mobile Number
+                Email Address
               </label>
               <input
-                name="mobile"
-                type="tel"
+                name="email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
                 required
                 className="input-base"
-                placeholder="10-digit mobile number"
+                placeholder="Enter your email address"
               />
             </div>
 
             {message && (
               <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3">
                 <p className="text-sm text-blue-700">{message}</p>
+              </div>
+            )}
+
+            {error && (
+              <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3">
+                <p className="text-sm text-red-700">{error}</p>
               </div>
             )}
 

@@ -66,7 +66,7 @@ export function Sidebar({ user }: { user: SessionUser }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
-            <p className="text-xs text-gray-400 truncate">{user.mobile}</p>
+            <p className="text-xs text-gray-400 truncate">{user.email}</p>
           </div>
         </div>
         <form action={logoutAction}>

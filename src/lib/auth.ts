@@ -22,7 +22,7 @@ export async function createSessionToken(user: SessionUser): Promise<string> {
   return await new SignJWT({
     id: user.id,
     name: user.name,
-    mobile: user.mobile,
+    email: user.email,
     role: user.role,
     tokenVersion: user.tokenVersion ?? 1,
   })

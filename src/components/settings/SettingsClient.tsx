@@ -13,8 +13,10 @@ interface Template {
 
 interface Props {
   user: SessionUser;
+  mobile: string;
   templates: Template[];
 }
+
 
 const TEMPLATE_LABELS: Record<string, string> = {
   DUE_REMINDER: "Due Reminder",
@@ -30,7 +32,7 @@ const TEMPLATE_VARS: Record<string, string[]> = {
   ACCOUNT_STATEMENT: ["{{borrowerName}}", "{{loanNumber}}", "{{interestType}}", "{{principal}}", "{{interestRate}}", "{{totalPaid}}", "{{pendingInterest}}", "{{outstandingPrincipal}}"],
 };
 
-export function SettingsClient({ user, templates }: Props) {
+export function SettingsClient({ user, mobile, templates }: Props) {
   const [activeTab, setActiveTab] = useState<"templates" | "security" | "export">("templates");
   const [templateValues, setTemplateValues] = useState<Record<string, string>>(
     Object.fromEntries(templates.map((t) => [t.type, t.value]))
@@ -202,8 +204,19 @@ export function SettingsClient({ user, templates }: Props) {
                 <input name="name" type="text" defaultValue={user.name} required className="input-base" />
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Email Address</label>
+                <input
+                  type="email"
+                  value={user.email}
+                  readOnly
+                  className="input-base bg-gray-50 text-gray-500 cursor-not-allowed"
+                  title="Email address cannot be changed here. Contact support to update your email."
+                />
+                <p className="text-xs text-gray-400 mt-1">Email address is used for login and cannot be changed here.</p>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Mobile Number</label>
-                <input name="mobile" type="tel" defaultValue={user.mobile} required className="input-base" />
+                <input name="mobile" type="tel" defaultValue={mobile} required className="input-base" />
               </div>
 
               {accountError && (

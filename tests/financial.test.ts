@@ -290,7 +290,7 @@ function loadAuthActions(mockPrisma: MockPrisma, options: any = {}) {
       setSessionCookie: async (t: string) => { options.savedToken = t; },
       clearSession: async () => { options.clearedSession = true; },
       getSession: async () => options.session || null,
-      requireAuth: async () => options.session || { id: "user-1", name: "User 1", mobile: "9876543210", role: "ADMIN" },
+      requireAuth: async () => options.session || { id: "user-1", name: "User 1", email: "user1@example.com", role: "ADMIN" },
     },
   } as NodeModule;
 
@@ -2679,32 +2679,50 @@ describe("registration and user onboarding", () => {
   it("rejects registration with invalid parameters", async () => {
     const { registerAction } = loadAuthActions({});
 
+    // Short name
     const fdShortName = new FormData();
     fdShortName.set("name", "A");
+    fdShortName.set("email", "lender@example.com");
     fdShortName.set("mobile", "9876543210");
     fdShortName.set("password", "password123");
     fdShortName.set("confirmPassword", "password123");
     const resShortName = await registerAction(fdShortName);
     assert.equal(resShortName.error, "Full name must be at least 2 characters long");
 
+    // Invalid email
+    const fdBadEmail = new FormData();
+    fdBadEmail.set("name", "John Lender");
+    fdBadEmail.set("email", "not-an-email");
+    fdBadEmail.set("mobile", "9876543210");
+    fdBadEmail.set("password", "password123");
+    fdBadEmail.set("confirmPassword", "password123");
+    const resBadEmail = await registerAction(fdBadEmail);
+    assert.equal(resBadEmail.error, "Please enter a valid email address");
+
+    // Short mobile
     const fdShortMobile = new FormData();
     fdShortMobile.set("name", "John Lender");
+    fdShortMobile.set("email", "lender@example.com");
     fdShortMobile.set("mobile", "123");
     fdShortMobile.set("password", "password123");
     fdShortMobile.set("confirmPassword", "password123");
     const resShortMobile = await registerAction(fdShortMobile);
     assert.equal(resShortMobile.error, "Please enter a valid mobile number (at least 10 digits)");
 
+    // Short password
     const fdShortPassword = new FormData();
     fdShortPassword.set("name", "John Lender");
+    fdShortPassword.set("email", "lender@example.com");
     fdShortPassword.set("mobile", "9876543210");
     fdShortPassword.set("password", "short");
     fdShortPassword.set("confirmPassword", "short");
     const resShortPassword = await registerAction(fdShortPassword);
     assert.equal(resShortPassword.error, "Password must be at least 8 characters long");
 
+    // Password mismatch
     const fdMismatch = new FormData();
     fdMismatch.set("name", "John Lender");
+    fdMismatch.set("email", "lender@example.com");
     fdMismatch.set("mobile", "9876543210");
     fdMismatch.set("password", "password123");
     fdMismatch.set("confirmPassword", "different123");
@@ -2712,21 +2730,22 @@ describe("registration and user onboarding", () => {
     assert.equal(resMismatch.error, "Passwords do not match");
   });
 
-  it("rejects registration if mobile number already exists", async () => {
+  it("rejects registration if email already exists", async () => {
     const { registerAction } = loadAuthActions({
       user: {
-        findUnique: async () => ({ id: "existing-user", mobile: "9876543210" }),
+        findUnique: async () => ({ id: "existing-user", email: "lender@example.com" }),
       },
     });
 
     const fd = new FormData();
     fd.set("name", "John Lender");
+    fd.set("email", "lender@example.com");
     fd.set("mobile", "9876543210");
     fd.set("password", "password123");
     fd.set("confirmPassword", "password123");
 
     const result = await registerAction(fd);
-    assert.equal(result.error, "An account with this mobile number already exists");
+    assert.equal(result.error, "An account with this email already exists");
   });
 
   it("successfully registers new user, hashes password, and creates session", async () => {
@@ -2757,6 +2776,7 @@ describe("registration and user onboarding", () => {
 
     const fd = new FormData();
     fd.set("name", "New Lender");
+    fd.set("email", " NewLender@Example.COM "); // should be normalized
     fd.set("mobile", "98765 99999");
     fd.set("password", "securePass123");
     fd.set("confirmPassword", "securePass123");
@@ -2770,6 +2790,7 @@ describe("registration and user onboarding", () => {
 
     assert.equal(createdUsers.length, 1);
     assert.equal(createdUsers[0].name, "New Lender");
+    assert.equal(createdUsers[0].email, "newlender@example.com"); // normalized
     assert.equal(createdUsers[0].mobile, "9876599999");
     assert.equal(createdUsers[0].passwordHash, "hashed_securePass123");
     assert.equal(createdUsers[0].role, "ADMIN");
@@ -2780,56 +2801,52 @@ describe("registration and user onboarding", () => {
     assert.equal(auditLogs[0].userId, "user-new");
   });
 
-  it("handles login, wrong password, unknown mobile, and logout", async () => {
+  it("handles login, wrong password, unknown email, and logout", async () => {
     const options: any = {};
-    const auditLogs: any[] = [];
 
     const { loginAction, logoutAction } = loadAuthActions(
       {
         user: {
           findUnique: async ({ where }: any) => {
-            if (where.mobile === "9876543210") {
+            if (where.email === "lender@example.com") {
               return {
                 id: "user-1",
-                name: "Existing Lender",
+                name: "John Lender",
+                email: "lender@example.com",
                 mobile: "9876543210",
-                passwordHash: "hashed_correctPass123",
+                passwordHash: "hashed_securePass123",
                 role: "ADMIN",
                 isActive: true,
+                tokenVersion: 1,
               };
             }
             return null;
           },
           update: async () => ({}),
         },
-        auditLog: {
-          create: async (args: any) => {
-            auditLogs.push(args.data);
-            return args.data;
-          },
-        },
+        auditLog: { create: async () => ({}) },
       },
       options
     );
 
-    // Unknown mobile
+    // Unknown email — generic error (no enumeration)
     const fdUnknown = new FormData();
-    fdUnknown.set("mobile", "0000000000");
-    fdUnknown.set("password", "correctPass123");
+    fdUnknown.set("email", "unknown@example.com");
+    fdUnknown.set("password", "securePass123");
     const resUnknown = await loginAction(fdUnknown);
-    assert.equal(resUnknown.error, "Invalid mobile number or password");
+    assert.equal(resUnknown.error, "Invalid email or password");
 
-    // Wrong password
+    // Wrong password — generic error
     const fdWrong = new FormData();
-    fdWrong.set("mobile", "9876543210");
-    fdWrong.set("password", "wrongPass");
+    fdWrong.set("email", "lender@example.com");
+    fdWrong.set("password", "wrongPassword");
     const resWrong = await loginAction(fdWrong);
-    assert.equal(resWrong.error, "Invalid mobile number or password");
+    assert.equal(resWrong.error, "Invalid email or password");
 
-    // Correct login
+    // Valid login — email normalized (uppercase → lowercase)
     const fdValid = new FormData();
-    fdValid.set("mobile", "9876543210");
-    fdValid.set("password", "correctPass123");
+    fdValid.set("email", "LENDER@EXAMPLE.COM");
+    fdValid.set("password", "securePass123");
 
     await assert.rejects(
       async () => {
@@ -2851,6 +2868,7 @@ describe("registration and user onboarding", () => {
 
     assert.equal(options.clearedSession, true);
   });
+
 
   it("enforces secure reset tokens, token hashing, rate limiting, and tokenVersion session invalidation", async () => {
 
@@ -2892,7 +2910,6 @@ describe("registration and user onboarding", () => {
     assert.equal(headerKeys.includes("X-Frame-Options"), true);
     assert.equal(headerKeys.includes("Referrer-Policy"), true);
     assert.equal(headerKeys.includes("Permissions-Policy"), true);
-
     const frameHeader = headersList.find((h: any) => h.key === "X-Frame-Options");
     assert.equal(frameHeader.value, "DENY");
 
@@ -2900,7 +2917,7 @@ describe("registration and user onboarding", () => {
     assert.equal(nosniffHeader.value, "nosniff");
   });
 
-  it("handles SMS provider configuration, success, non-2xx, and network errors safely", async () => {
+  it("handles SMS/Email provider configuration, success, non-2xx, and network errors safely", async () => {
     const { sendPasswordResetSMS } = await import("@/lib/sms");
     const origEnv = process.env.NODE_ENV;
     const origFetch = global.fetch;
@@ -2942,6 +2959,55 @@ describe("registration and user onboarding", () => {
       delete process.env.SMS_PROVIDER_URL;
     }
   });
+
+  it("handles email provider configuration, success, non-2xx, and network errors safely", async () => {
+    // Clear module cache so we pick up fresh env vars
+    const emailPath = require.resolve("../src/lib/email");
+    delete require.cache[emailPath];
+    const { sendPasswordResetEmail } = require("../src/lib/email");
+
+    const origEnv = process.env.NODE_ENV;
+    const origFetch = global.fetch;
+
+    try {
+      // 1. Missing credentials in production -> fails with expected message
+      (process.env as any).NODE_ENV = "production";
+      delete process.env.EMAIL_PROVIDER_API_KEY;
+      delete process.env.EMAIL_PROVIDER_URL;
+
+      const resProdMissing = await sendPasswordResetEmail("lender@example.com", "raw_token_456");
+      assert.equal(resProdMissing.success, false);
+      assert.equal(resProdMissing.error, "Password reset delivery is not configured");
+
+      // 2. Configured + HTTP 200 -> succeeds
+      process.env.EMAIL_PROVIDER_API_KEY = "test_email_key";
+      process.env.EMAIL_PROVIDER_URL = "https://api.email.example.com/send";
+      delete require.cache[emailPath];
+      const { sendPasswordResetEmail: emailWithCreds } = require("../src/lib/email");
+      (global as any).fetch = async () => ({ ok: true, status: 200 });
+
+      const resSuccess = await emailWithCreds("lender@example.com", "raw_token_456");
+      assert.equal(resSuccess.success, true);
+
+      // 3. Configured + HTTP 500 -> fails
+      (global as any).fetch = async () => ({ ok: false, status: 500 });
+      const res500 = await emailWithCreds("lender@example.com", "raw_token_456");
+      assert.equal(res500.success, false);
+      assert.equal(res500.error, "Email dispatch failed");
+
+      // 4. Network error -> fails gracefully
+      (global as any).fetch = async () => { throw new Error("Network timeout"); };
+      const resNetErr = await emailWithCreds("lender@example.com", "raw_token_456");
+      assert.equal(resNetErr.success, false);
+      assert.equal(resNetErr.error, "Email dispatch network error");
+
+    } finally {
+      (process.env as any).NODE_ENV = origEnv;
+      global.fetch = origFetch;
+      delete process.env.EMAIL_PROVIDER_API_KEY;
+      delete process.env.EMAIL_PROVIDER_URL;
+    }
+  });
 });
 
 describe("account management & data lifecycle (Phase 7)", () => {
@@ -2950,11 +3016,11 @@ describe("account management & data lifecycle (Phase 7)", () => {
       user: {
         findUnique: async ({ where }: any) => {
           if (where.mobile === "9999999992") {
-            return { id: "user_b", name: "User B", mobile: "9999999992" };
+            return { id: "user_b", name: "User B", email: "userb@example.com", mobile: "9999999992" };
           }
           return null;
         },
-        update: async (args: any) => ({ id: "user_a", ...args.data }),
+        update: async (args: any) => ({ id: "user_a", email: "usera@example.com", ...args.data }),
       },
       auditLog: {
         create: async (args: any) => args.data,
@@ -2962,7 +3028,7 @@ describe("account management & data lifecycle (Phase 7)", () => {
     };
 
     const { updateAccountAction } = loadAuthActions(mockPrisma, {
-      session: { id: "user_a", name: "User A", mobile: "9999999991", role: "ADMIN" },
+      session: { id: "user_a", name: "User A", email: "usera@example.com", role: "ADMIN" },
     });
 
     const fdDuplicate = new FormData();
@@ -2995,7 +3061,7 @@ describe("account management & data lifecycle (Phase 7)", () => {
     };
 
     const { exportUserDataAction } = loadAuthActions(mockPrisma, {
-      session: { id: "user_a", name: "User A", mobile: "9999999991", role: "ADMIN" },
+      session: { id: "user_a", name: "User A", email: "usera@example.com", role: "ADMIN" },
     });
 
     const exportResult = await exportUserDataAction();

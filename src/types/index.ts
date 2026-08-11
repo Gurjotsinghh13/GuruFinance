@@ -311,7 +311,8 @@ export type PaginatedResponse<T> = ApiResponse<{
 export type SessionUser = {
   id: string;
   name: string;
-  mobile: string;
+  email: string;
   role: Role;
   tokenVersion?: number;
 };
+

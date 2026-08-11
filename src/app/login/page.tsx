@@ -30,7 +30,7 @@ export default function LoginPage() {
         </div>
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900">LoanBook</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Smart Loan & Interest Management</p>
+          <p className="text-sm text-gray-500 mt-0.5">Smart Loan &amp; Interest Management</p>
         </div>
       </div>
 
@@ -39,22 +39,22 @@ export default function LoginPage() {
         <h2 className="text-lg font-semibold text-gray-900 mb-6">Sign in</h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Mobile */}
+          {/* Email */}
           <div>
             <label
-              htmlFor="mobile"
+              htmlFor="email"
               className="block text-sm font-medium text-gray-700 mb-1.5"
             >
-              Mobile Number
+              Email Address
             </label>
             <input
-              id="mobile"
-              name="mobile"
-              type="tel"
-              inputMode="numeric"
-              autoComplete="username"
+              id="email"
+              name="email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
               required
-              placeholder="Enter your mobile number"
+              placeholder="Enter your email address"
               className="input-base"
             />
           </div>
@@ -136,7 +136,7 @@ export default function LoginPage() {
       </div>
 
       <p className="mt-6 text-xs text-gray-400 text-center">
-        LoanBook — Smart Loan & Interest Management
+        LoanBook — Smart Loan &amp; Interest Management
       </p>
     </div>
   );

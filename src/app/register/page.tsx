@@ -31,7 +31,7 @@ export default function RegisterPage() {
         </div>
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900">LoanBook</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Smart Loan & Interest Management</p>
+          <p className="text-sm text-gray-500 mt-0.5">Smart Loan &amp; Interest Management</p>
         </div>
       </div>
 
@@ -52,13 +52,34 @@ export default function RegisterPage() {
               id="name"
               name="name"
               type="text"
+              autoComplete="name"
               required
               placeholder="Enter your full name"
               className="input-base"
             />
           </div>
 
-          {/* Mobile */}
+          {/* Email */}
+          <div>
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-gray-700 mb-1.5"
+            >
+              Email Address
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              required
+              placeholder="Enter your email address"
+              className="input-base"
+            />
+          </div>
+
+          {/* Mobile (contact info) */}
           <div>
             <label
               htmlFor="mobile"
@@ -71,7 +92,7 @@ export default function RegisterPage() {
               name="mobile"
               type="tel"
               inputMode="numeric"
-              autoComplete="username"
+              autoComplete="tel"
               required
               placeholder="Enter 10-digit mobile number"
               className="input-base"
@@ -183,7 +204,7 @@ export default function RegisterPage() {
       </div>
 
       <p className="mt-6 text-xs text-gray-400 text-center">
-        LoanBook — Smart Loan & Interest Management
+        LoanBook — Smart Loan &amp; Interest Management
       </p>
     </div>
   );
