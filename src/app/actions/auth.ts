@@ -199,3 +199,85 @@ export async function resetPasswordAction(
 
   return { success: true };
 }
+
+// ============================================================
+// REGISTER
+// ============================================================
+
+export async function registerAction(formData: FormData): Promise<{
+  error?: string;
+}> {
+  const name = (formData.get("name") as string)?.trim();
+  const rawMobile = formData.get("mobile") as string;
+  const password = formData.get("password") as string;
+  const confirmPassword = formData.get("confirmPassword") as string;
+
+  if (!name || name.length < 2) {
+    return { error: "Full name must be at least 2 characters long" };
+  }
+
+  const mobile = rawMobile ? rawMobile.trim().replace(/[\s\-\(\)]/g, "") : "";
+  if (!mobile || mobile.length < 10) {
+    return { error: "Please enter a valid mobile number (at least 10 digits)" };
+  }
+
+  if (!password || password.length < 8) {
+    return { error: "Password must be at least 8 characters long" };
+  }
+
+  if (password !== confirmPassword) {
+    return { error: "Passwords do not match" };
+  }
+
+  const existingUser = await prisma.user.findUnique({ where: { mobile } });
+  if (existingUser) {
+    return { error: "An account with this mobile number already exists" };
+  }
+
+  const passwordHash = await hashPassword(password);
+  let user;
+
+  try {
+    user = await prisma.user.create({
+      data: {
+        name,
+        mobile,
+        passwordHash,
+        role: "ADMIN",
+        isActive: true,
+      },
+    });
+  } catch (err: any) {
+    if (err.code === "P2002") {
+      return { error: "An account with this mobile number already exists" };
+    }
+    return { error: "Failed to create account. Please try again." };
+  }
+
+  const token = await createSessionToken({
+    id: user.id,
+    name: user.name,
+    mobile: user.mobile,
+    role: user.role,
+  });
+
+  await setSessionCookie(token);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: user.id,
+      action: AuditAction.USER_LOGIN,
+      entityType: "User",
+      entityId: user.id,
+      details: { method: "registration" },
+    },
+  });
+
+  redirect("/dashboard");
+}
+

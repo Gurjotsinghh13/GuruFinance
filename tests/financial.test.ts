@@ -260,6 +260,54 @@ function loadSettingsActions(mockPrisma: MockPrisma, options: any = {}) {
   return require("../src/app/actions/settings");
 }
 
+function loadAuthActions(mockPrisma: MockPrisma, options: any = {}) {
+  const prismaPath = require.resolve("../src/lib/prisma");
+  const authPath = require.resolve("../src/lib/auth");
+  const nextNavigationPath = require.resolve("next/navigation");
+  const authActionsPath = require.resolve("../src/app/actions/auth");
+
+  delete require.cache[prismaPath];
+  delete require.cache[authPath];
+  delete require.cache[nextNavigationPath];
+  delete require.cache[authActionsPath];
+
+  require.cache[prismaPath] = {
+    id: prismaPath,
+    filename: prismaPath,
+    loaded: true,
+    exports: { prisma: mockPrisma },
+  } as NodeModule;
+
+  require.cache[authPath] = {
+    id: authPath,
+    filename: authPath,
+    loaded: true,
+    exports: {
+      hashPassword: async (p: string) => `hashed_${p}`,
+      verifyPassword: async (p: string, h: string) => h === `hashed_${p}`,
+      createSessionToken: async (user: any) => `token_${user.id}`,
+      setSessionCookie: async (t: string) => { options.savedToken = t; },
+      clearSession: async () => { options.clearedSession = true; },
+      getSession: async () => options.session || null,
+    },
+  } as NodeModule;
+
+  require.cache[nextNavigationPath] = {
+    id: nextNavigationPath,
+    filename: nextNavigationPath,
+    loaded: true,
+    exports: {
+      redirect: (url: string) => {
+        options.redirectUrl = url;
+        throw new Error(`NEXT_REDIRECT:${url}`);
+      },
+    },
+  } as NodeModule;
+
+  return require("../src/app/actions/auth");
+}
+
+
 function loadWhatsAppFeature(mockPrisma: MockPrisma) {
   const prismaPath = require.resolve("../src/lib/prisma");
   const whatsappPath = require.resolve("../src/features/whatsapp");
@@ -2624,3 +2672,182 @@ describe("interest payment recording", () => {
     assert.ok(revalidated.includes("/borrowers/borrower-receipt"));
   });
 });
+
+describe("registration and user onboarding", () => {
+  it("rejects registration with invalid parameters", async () => {
+    const { registerAction } = loadAuthActions({});
+
+    const fdShortName = new FormData();
+    fdShortName.set("name", "A");
+    fdShortName.set("mobile", "9876543210");
+    fdShortName.set("password", "password123");
+    fdShortName.set("confirmPassword", "password123");
+    const resShortName = await registerAction(fdShortName);
+    assert.equal(resShortName.error, "Full name must be at least 2 characters long");
+
+    const fdShortMobile = new FormData();
+    fdShortMobile.set("name", "John Lender");
+    fdShortMobile.set("mobile", "123");
+    fdShortMobile.set("password", "password123");
+    fdShortMobile.set("confirmPassword", "password123");
+    const resShortMobile = await registerAction(fdShortMobile);
+    assert.equal(resShortMobile.error, "Please enter a valid mobile number (at least 10 digits)");
+
+    const fdShortPassword = new FormData();
+    fdShortPassword.set("name", "John Lender");
+    fdShortPassword.set("mobile", "9876543210");
+    fdShortPassword.set("password", "short");
+    fdShortPassword.set("confirmPassword", "short");
+    const resShortPassword = await registerAction(fdShortPassword);
+    assert.equal(resShortPassword.error, "Password must be at least 8 characters long");
+
+    const fdMismatch = new FormData();
+    fdMismatch.set("name", "John Lender");
+    fdMismatch.set("mobile", "9876543210");
+    fdMismatch.set("password", "password123");
+    fdMismatch.set("confirmPassword", "different123");
+    const resMismatch = await registerAction(fdMismatch);
+    assert.equal(resMismatch.error, "Passwords do not match");
+  });
+
+  it("rejects registration if mobile number already exists", async () => {
+    const { registerAction } = loadAuthActions({
+      user: {
+        findUnique: async () => ({ id: "existing-user", mobile: "9876543210" }),
+      },
+    });
+
+    const fd = new FormData();
+    fd.set("name", "John Lender");
+    fd.set("mobile", "9876543210");
+    fd.set("password", "password123");
+    fd.set("confirmPassword", "password123");
+
+    const result = await registerAction(fd);
+    assert.equal(result.error, "An account with this mobile number already exists");
+  });
+
+  it("successfully registers new user, hashes password, and creates session", async () => {
+    const createdUsers: any[] = [];
+    const auditLogs: any[] = [];
+    const options: any = {};
+
+    const { registerAction } = loadAuthActions(
+      {
+        user: {
+          findUnique: async () => null,
+          create: async (args: any) => {
+            const newUser = { id: "user-new", ...args.data };
+            createdUsers.push(newUser);
+            return newUser;
+          },
+          update: async () => ({}),
+        },
+        auditLog: {
+          create: async (args: any) => {
+            auditLogs.push(args.data);
+            return args.data;
+          },
+        },
+      },
+      options
+    );
+
+    const fd = new FormData();
+    fd.set("name", "New Lender");
+    fd.set("mobile", "98765 43210");
+    fd.set("password", "securePass123");
+    fd.set("confirmPassword", "securePass123");
+
+    await assert.rejects(
+      async () => {
+        await registerAction(fd);
+      },
+      (err: any) => err.message === "NEXT_REDIRECT:/dashboard"
+    );
+
+    assert.equal(createdUsers.length, 1);
+    assert.equal(createdUsers[0].name, "New Lender");
+    assert.equal(createdUsers[0].mobile, "9876543210");
+    assert.equal(createdUsers[0].passwordHash, "hashed_securePass123");
+    assert.equal(createdUsers[0].role, "ADMIN");
+    assert.equal(createdUsers[0].isActive, true);
+    assert.equal(options.savedToken, "token_user-new");
+    assert.equal(options.redirectUrl, "/dashboard");
+    assert.equal(auditLogs.length, 1);
+    assert.equal(auditLogs[0].userId, "user-new");
+  });
+
+  it("handles login, wrong password, unknown mobile, and logout", async () => {
+    const options: any = {};
+    const auditLogs: any[] = [];
+
+    const { loginAction, logoutAction } = loadAuthActions(
+      {
+        user: {
+          findUnique: async ({ where }: any) => {
+            if (where.mobile === "9876543210") {
+              return {
+                id: "user-1",
+                name: "Existing Lender",
+                mobile: "9876543210",
+                passwordHash: "hashed_correctPass123",
+                role: "ADMIN",
+                isActive: true,
+              };
+            }
+            return null;
+          },
+          update: async () => ({}),
+        },
+        auditLog: {
+          create: async (args: any) => {
+            auditLogs.push(args.data);
+            return args.data;
+          },
+        },
+      },
+      options
+    );
+
+    // Unknown mobile
+    const fdUnknown = new FormData();
+    fdUnknown.set("mobile", "0000000000");
+    fdUnknown.set("password", "correctPass123");
+    const resUnknown = await loginAction(fdUnknown);
+    assert.equal(resUnknown.error, "Invalid mobile number or password");
+
+    // Wrong password
+    const fdWrong = new FormData();
+    fdWrong.set("mobile", "9876543210");
+    fdWrong.set("password", "wrongPass");
+    const resWrong = await loginAction(fdWrong);
+    assert.equal(resWrong.error, "Invalid mobile number or password");
+
+    // Correct login
+    const fdValid = new FormData();
+    fdValid.set("mobile", "9876543210");
+    fdValid.set("password", "correctPass123");
+
+    await assert.rejects(
+      async () => {
+        await loginAction(fdValid);
+      },
+      (err: any) => err.message === "NEXT_REDIRECT:/dashboard"
+    );
+
+    assert.equal(options.savedToken, "token_user-1");
+
+    // Logout
+    options.session = { id: "user-1" };
+    await assert.rejects(
+      async () => {
+        await logoutAction();
+      },
+      (err: any) => err.message === "NEXT_REDIRECT:/login"
+    );
+
+    assert.equal(options.clearedSession, true);
+  });
+});
+

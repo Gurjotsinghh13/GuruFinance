@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { getJwtSecretBytes } from "@/lib/session-secret";
 
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/api/cron"];
+const PUBLIC_PATHS = ["/login", "/register", "/forgot-password", "/reset-password", "/api/cron"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { loginAction } from "@/app/actions/auth";
+import { registerAction } from "@/app/actions/auth";
 import { Landmark, Eye, EyeOff, Loader2 } from "lucide-react";
 import Link from "next/link";
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -16,7 +17,7 @@ export default function LoginPage() {
     const formData = new FormData(e.currentTarget);
 
     startTransition(async () => {
-      const result = await loginAction(formData);
+      const result = await registerAction(formData);
       if (result?.error) setError(result.error);
     });
   }
@@ -29,16 +30,34 @@ export default function LoginPage() {
           <Landmark className="w-6 h-6 text-white" />
         </div>
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900">GuruFinance</h1>
+          <h1 className="text-2xl font-bold text-gray-900">LoanBook</h1>
           <p className="text-sm text-gray-500 mt-0.5">Smart Loan & Interest Management</p>
         </div>
       </div>
 
-      {/* Login card */}
+      {/* Registration card */}
       <div className="w-full max-w-sm card p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-6">Sign in</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-6">Create an account</h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Full Name */}
+          <div>
+            <label
+              htmlFor="name"
+              className="block text-sm font-medium text-gray-700 mb-1.5"
+            >
+              Full Name
+            </label>
+            <input
+              id="name"
+              name="name"
+              type="text"
+              required
+              placeholder="Enter your full name"
+              className="input-base"
+            />
+          </div>
+
           {/* Mobile */}
           <div>
             <label
@@ -54,7 +73,7 @@ export default function LoginPage() {
               inputMode="numeric"
               autoComplete="username"
               required
-              placeholder="Enter your mobile number"
+              placeholder="Enter 10-digit mobile number"
               className="input-base"
             />
           </div>
@@ -72,9 +91,10 @@ export default function LoginPage() {
                 id="password"
                 name="password"
                 type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
+                autoComplete="new-password"
                 required
-                placeholder="Enter your password"
+                minLength={8}
+                placeholder="Minimum 8 characters"
                 className="input-base pr-10"
               />
               <button
@@ -83,6 +103,39 @@ export default function LoginPage() {
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
                 {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Confirm Password */}
+          <div>
+            <label
+              htmlFor="confirmPassword"
+              className="block text-sm font-medium text-gray-700 mb-1.5"
+            >
+              Confirm Password
+            </label>
+            <div className="relative">
+              <input
+                id="confirmPassword"
+                name="confirmPassword"
+                type={showConfirmPassword ? "text" : "password"}
+                autoComplete="new-password"
+                required
+                minLength={8}
+                placeholder="Re-enter your password"
+                className="input-base pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword((s) => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                {showConfirmPassword ? (
                   <EyeOff className="w-4 h-4" />
                 ) : (
                   <Eye className="w-4 h-4" />
@@ -107,28 +160,22 @@ export default function LoginPage() {
             {isPending ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Signing in...
+                Creating Account...
               </>
             ) : (
-              "Sign in"
+              "Create Account"
             )}
           </button>
 
-          {/* Links */}
-          <div className="flex flex-col items-center gap-2 pt-2 text-center text-sm">
-            <Link
-              href="/forgot-password"
-              className="text-indigo-600 hover:text-indigo-700"
-            >
-              Forgot password?
-            </Link>
-            <p className="text-gray-500">
-              Don&apos;t have an account?{" "}
+          {/* Login link */}
+          <div className="text-center pt-2">
+            <p className="text-sm text-gray-500">
+              Already have an account?{" "}
               <Link
-                href="/register"
+                href="/login"
                 className="text-indigo-600 hover:text-indigo-700 font-medium"
               >
-                Create one
+                Sign in
               </Link>
             </p>
           </div>
