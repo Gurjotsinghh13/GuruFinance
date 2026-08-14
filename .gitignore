@@ -1,48 +1,82 @@
+# ──────────────────────────────────────────────────────────────
 # Dependencies
+# ──────────────────────────────────────────────────────────────
 node_modules/
 
-# Next.js build output
+# ──────────────────────────────────────────────────────────────
+# Next.js build & output artefacts
+# ──────────────────────────────────────────────────────────────
 .next/
 out/
-
-# Production/local build artifacts
 dist/
 build/
 
-# Environment variables and secrets
+# Prisma generated client (regenerated on postinstall / db:generate)
+src/generated/
+
+# ──────────────────────────────────────────────────────────────
+# Environment variables & secrets — NEVER commit these
+# ──────────────────────────────────────────────────────────────
 .env
 .env.*
 !.env.example
 
-# Vercel
+# ──────────────────────────────────────────────────────────────
+# Vercel platform
+# ──────────────────────────────────────────────────────────────
 .vercel/
 
+# ──────────────────────────────────────────────────────────────
 # Logs
+# ──────────────────────────────────────────────────────────────
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
 
-# Local database backups and exports
+# Temporary e2e / dev server logs generated at root
+tmp-*.log
+tmp-*.err.log
+tmp-*.out.log
+
+# ──────────────────────────────────────────────────────────────
+# Database backups & data exports
+# Keep migration SQL but ignore raw dumps / exports
+# ──────────────────────────────────────────────────────────────
 backups/
 *.dump
 *.sql
 !prisma/migrations/**/*.sql
 *.backup
-*.csv
-*.xlsx
 
-# OS/editor files
+# ──────────────────────────────────────────────────────────────
+# OS / editor artefacts
+# ──────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+desktop.ini
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
 
-# TypeScript cache
+# ──────────────────────────────────────────────────────────────
+# TypeScript build cache
+# ──────────────────────────────────────────────────────────────
 *.tsbuildinfo
 
-# Test/runtime temp files
+# ──────────────────────────────────────────────────────────────
+# Test & runtime temp files
+# ──────────────────────────────────────────────────────────────
 scratch/
-tmp-*
 coverage/
+.nyc_output/
+
+# ──────────────────────────────────────────────────────────────
+# Miscellaneous artefacts that should not be tracked
+# ──────────────────────────────────────────────────────────────
+# Stray npx binary left by npx invocations at the repo root
+npx
