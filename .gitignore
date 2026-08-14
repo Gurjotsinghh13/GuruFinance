@@ -43,5 +43,6 @@ Thumbs.db
 *.tsbuildinfo
 
 # Test/runtime temp files
+scratch/
 tmp-*
 coverage/
