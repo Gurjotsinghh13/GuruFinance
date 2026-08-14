@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Settings, MessageSquare, Lock, Save, Loader2, Check, Download, UserCheck } from "lucide-react";
 import { saveTemplateAction } from "@/app/actions/settings";
 import { changePasswordAction, updateAccountAction, exportUserDataAction } from "@/app/actions/auth";
@@ -33,6 +34,7 @@ const TEMPLATE_VARS: Record<string, string[]> = {
 };
 
 export function SettingsClient({ user, mobile, templates }: Props) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"templates" | "security" | "export">("templates");
   const [templateValues, setTemplateValues] = useState<Record<string, string>>(
     Object.fromEntries(templates.map((t) => [t.type, t.value]))
@@ -53,6 +55,7 @@ export function SettingsClient({ user, mobile, templates }: Props) {
       const result = await saveTemplateAction(type, templateValues[type]);
       if (result.success) {
         setSavedTypes((s) => new Set([...s, type]));
+        router.refresh();
         setTimeout(() => setSavedTypes((s) => { const n = new Set(s); n.delete(type); return n; }), 2000);
       }
     });

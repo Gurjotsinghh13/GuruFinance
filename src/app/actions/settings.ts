@@ -33,5 +33,9 @@ export async function saveTemplateAction(type: string, value: string): Promise<{
   });
 
   revalidatePath("/settings");
+  revalidatePath("/dashboard");
+  revalidatePath("/collections");
+  revalidatePath("/loans");
+  revalidatePath("/borrowers");
   return { success: true };
 }

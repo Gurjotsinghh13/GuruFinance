@@ -3371,4 +3371,209 @@ describe("financial QA & end-to-end money flow audit (Phase 8)", () => {
   });
 });
 
+describe("WhatsApp template persistence and cache revalidation", () => {
+  it("persists templates through prisma.settings.upsert and revalidates all dependent routes", async () => {
+    const upsertCalls: any[] = [];
+    const revalidatedPaths: string[] = [];
 
+    const { saveTemplateAction } = loadSettingsActions(
+      {
+        settings: {
+          upsert: async (args: any) => {
+            upsertCalls.push(args);
+            return args;
+          },
+        },
+        auditLog: { create: async () => ({}) },
+      },
+      {
+        session: { id: "user-1" },
+        revalidatePath: (path: string) => revalidatedPaths.push(path),
+      }
+    );
+
+    const res = await saveTemplateAction(MessageType.DUE_REMINDER, "Custom Due {{borrowerName}}");
+    assert.deepEqual(res, { success: true });
+
+    assert.equal(upsertCalls.length, 1);
+    assert.deepEqual(upsertCalls[0].where, {
+      userId_key: {
+        userId: "user-1",
+        key: `whatsapp_template_${MessageType.DUE_REMINDER}`,
+      },
+    });
+    assert.equal(upsertCalls[0].update.value, "Custom Due {{borrowerName}}");
+    assert.equal(upsertCalls[0].create.userId, "user-1");
+
+    assert.deepEqual(revalidatedPaths, [
+      "/settings",
+      "/dashboard",
+      "/collections",
+      "/loans",
+      "/borrowers",
+    ]);
+  });
+
+  it("retrieves newly saved DUE_REMINDER template in buildDueReminderLink", async () => {
+    const storedSettings = new Map<string, string>([
+      ["user-1:whatsapp_template_DUE_REMINDER", "New Due Template for {{borrowerName}} - Amount: {{amount}}"],
+    ]);
+
+    const { buildDueReminderLink } = loadWhatsAppFeature({
+      settings: {
+        findUnique: async ({ where }: any) => {
+          const key = `${where.userId_key.userId}:${where.userId_key.key}`;
+          const val = storedSettings.get(key);
+          return val ? { value: val } : null;
+        },
+      },
+    });
+
+    const link = await buildDueReminderLink({
+      userId: "user-1",
+      phone: "9876543210",
+      borrowerName: "Alice",
+      amount: 5000,
+      dueDate: new Date("2026-09-01"),
+      loanNumber: "LN-101",
+    });
+
+    const url = new URL(link);
+    assert.equal(url.searchParams.get("text"), "New Due Template for Alice - Amount: \u20b95,000");
+  });
+
+  it("retrieves newly saved PAYMENT_RECEIPT template in buildPaymentReceiptLink", async () => {
+    const storedSettings = new Map<string, string>([
+      ["user-1:whatsapp_template_PAYMENT_RECEIPT", "Receipt for {{borrowerName}} RCT: {{receiptNumber}} Amount: {{amount}}"],
+    ]);
+
+    const { buildPaymentReceiptLink } = loadWhatsAppFeature({
+      settings: {
+        findUnique: async ({ where }: any) => {
+          const key = `${where.userId_key.userId}:${where.userId_key.key}`;
+          const val = storedSettings.get(key);
+          return val ? { value: val } : null;
+        },
+      },
+    });
+
+    const link = await buildPaymentReceiptLink({
+      userId: "user-1",
+      phone: "9876543210",
+      borrowerName: "Bob",
+      amount: 1500,
+      paymentDate: new Date("2026-08-15"),
+      paymentMethod: "CASH",
+      loanNumber: "LN-102",
+      receiptNumber: "RCT-2026-9999",
+      remainingBalance: 0,
+    });
+
+    const url = new URL(link);
+    assert.equal(url.searchParams.get("text"), "Receipt for Bob RCT: RCT-2026-9999 Amount: \u20b91,500");
+  });
+
+  it("retrieves newly saved BALANCE_REMINDER template in buildBalanceReminderLink", async () => {
+    const storedSettings = new Map<string, string>([
+      ["user-1:whatsapp_template_BALANCE_REMINDER", "Balance due for {{borrowerName}}: {{totalOutstanding}}"],
+    ]);
+
+    const { buildBalanceReminderLink } = loadWhatsAppFeature({
+      settings: {
+        findUnique: async ({ where }: any) => {
+          const key = `${where.userId_key.userId}:${where.userId_key.key}`;
+          const val = storedSettings.get(key);
+          return val ? { value: val } : null;
+        },
+      },
+    });
+
+    const link = await buildBalanceReminderLink({
+      userId: "user-1",
+      phone: "9876543210",
+      borrowerName: "Charlie",
+      loanNumber: "LN-103",
+      principal: 10000,
+      pendingInterest: 500,
+      totalOutstanding: 10500,
+    });
+
+    const url = new URL(link);
+    assert.equal(url.searchParams.get("text"), "Balance due for Charlie: \u20b910,500");
+  });
+
+  it("retrieves newly saved ACCOUNT_STATEMENT template in buildAccountStatementLink", async () => {
+    const storedSettings = new Map<string, string>([
+      ["user-1:whatsapp_template_ACCOUNT_STATEMENT", "Statement for {{borrowerName}}: Paid {{totalPaid}}, Pending {{pendingInterest}}"],
+    ]);
+
+    const { buildAccountStatementLink } = loadWhatsAppFeature({
+      settings: {
+        findUnique: async ({ where }: any) => {
+          const key = `${where.userId_key.userId}:${where.userId_key.key}`;
+          const val = storedSettings.get(key);
+          return val ? { value: val } : null;
+        },
+      },
+    });
+
+    const link = await buildAccountStatementLink({
+      userId: "user-1",
+      phone: "9876543210",
+      borrowerName: "David",
+      loanNumber: "LN-104",
+      principal: 20000,
+      interestRate: 2,
+      totalPaid: 4000,
+      pendingInterest: 1000,
+      outstandingPrincipal: 20000,
+    });
+
+    const url = new URL(link);
+    assert.equal(url.searchParams.get("text"), "Statement for David: Paid \u20b94,000, Pending \u20b91,000");
+  });
+
+  it("enforces user isolation for settings reading and writing", async () => {
+    const storedSettings = new Map<string, string>([
+      ["user-A:whatsapp_template_DUE_REMINDER", "User A Custom Template"],
+      ["user-B:whatsapp_template_DUE_REMINDER", "User B Custom Template"],
+    ]);
+
+    const { getTemplate, buildDueReminderLink } = loadWhatsAppFeature({
+      settings: {
+        findUnique: async ({ where }: any) => {
+          const key = `${where.userId_key.userId}:${where.userId_key.key}`;
+          const val = storedSettings.get(key);
+          return val ? { value: val } : null;
+        },
+      },
+    });
+
+    const templateUserA = await getTemplate(MessageType.DUE_REMINDER, "user-A");
+    const templateUserB = await getTemplate(MessageType.DUE_REMINDER, "user-B");
+
+    assert.equal(templateUserA, "User A Custom Template");
+    assert.equal(templateUserB, "User B Custom Template");
+    assert.notEqual(templateUserA, templateUserB);
+
+    const upsertCalls: any[] = [];
+    const { saveTemplateAction } = loadSettingsActions(
+      {
+        settings: {
+          upsert: async (args: any) => {
+            upsertCalls.push(args);
+            return args;
+          },
+        },
+        auditLog: { create: async () => ({}) },
+      },
+      {
+        session: { id: "user-A" },
+      }
+    );
+
+    await saveTemplateAction(MessageType.DUE_REMINDER, "Updated User A Template");
+    assert.equal(upsertCalls[0].where.userId_key.userId, "user-A");
+    assert.notEqual(upsertCalls[0].where.userId_key.userId, "user-B");
+  });
+});
