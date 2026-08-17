@@ -1,16 +1,22 @@
 import type { SessionUser } from "@/types";
 import { GlobalSearch } from "./GlobalSearch";
-import { LogOut } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 import { logoutAction } from "@/app/actions/auth";
+import Link from "next/link";
 
 export function TopBar({ user }: { user: SessionUser }) {
   return (
     <header className="h-14 bg-white border-b border-gray-200 flex items-center gap-3 px-4 lg:px-6 sticky top-0 z-20">
-      {/* Mobile logo */}
+      {/* Mobile settings button — replaces GF logo; desktop sidebar already has Settings */}
       <div className="lg:hidden flex-shrink-0">
-        <div className="w-7 h-7 rounded-md bg-indigo-600 flex items-center justify-center">
-          <span className="text-white text-xs font-bold">GF</span>
-        </div>
+        <Link
+          href="/settings"
+          aria-label="Settings"
+          title="Settings"
+          className="w-8 h-8 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors"
+        >
+          <Settings className="w-4 h-4" />
+        </Link>
       </div>
 
       {/* Search */}
