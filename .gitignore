@@ -80,3 +80,7 @@ coverage/
 # ──────────────────────────────────────────────────────────────
 # Stray npx binary left by npx invocations at the repo root
 npx
+
+# Test Outputs
+test-results*.txt
+test_output.txt
