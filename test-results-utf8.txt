@@ -1,0 +1,559 @@
+﻿
+> gurufinance@0.1.0 test
+> node --test --require ./tests/register.js tests/financial.test.ts
+
+TAP version 13
+# [SMS Warning] Production SMS provider credentials missing (SMS_PROVIDER_API_KEY / SMS_PROVIDER_URL). Failed dispatch for ***3210.
+# [SMS Error] Provider responded with HTTP status 500 for ***3210.
+# [SMS Exception] Error delivering SMS for ***3210: Network timeout
+# [Email Warning] Production email provider credentials missing (EMAIL_PROVIDER_API_KEY / EMAIL_PROVIDER_URL). Failed dispatch for le***@example.com.
+# [Email Error] Provider responded with HTTP status 500 for le***@example.com.
+# [Email Exception] Error delivering email for le***@example.com: Network timeout
+# Subtest: WhatsApp template rendering
+    # Subtest: renders due reminder templates with amount, due date, borrower, and loan number
+    ok 1 - renders due reminder templates with amount, due date, borrower, and loan number
+      ---
+      duration_ms: 109.5742
+      ...
+    # Subtest: renders balance reminder templates with outstanding totals
+    ok 2 - renders balance reminder templates with outstanding totals
+      ---
+      duration_ms: 34.9086
+      ...
+    # Subtest: renders payment receipt templates with receipt details and remaining balance
+    ok 3 - renders payment receipt templates with receipt details and remaining balance
+      ---
+      duration_ms: 32.9818
+      ...
+    # Subtest: renders payment receipt allocation details for partial and multi-due payments
+    ok 4 - renders payment receipt allocation details for partial and multi-due payments
+      ---
+      duration_ms: 25.4932
+      ...
+    # Subtest: renders account statement templates with statement totals
+    ok 5 - renders account statement templates with statement totals
+      ---
+      duration_ms: 24.3532
+      ...
+    # Subtest: loads custom templates from Settings and URL-encodes WhatsApp links
+    ok 6 - loads custom templates from Settings and URL-encodes WhatsApp links
+      ---
+      duration_ms: 25.816
+      ...
+    # Subtest: reuses a preloaded template without changing WhatsApp link output
+    ok 7 - reuses a preloaded template without changing WhatsApp link output
+      ---
+      duration_ms: 20.3824
+      ...
+    # Subtest: adds interest type to legacy saved templates without changing their stored content
+    ok 8 - adds interest type to legacy saved templates without changing their stored content
+      ---
+      duration_ms: 26.8767
+      ...
+    1..8
+ok 1 - WhatsApp template rendering
+  ---
+  duration_ms: 302.7244
+  type: 'suite'
+  ...
+# Subtest: financial calculations
+    # Subtest: calculates simple monthly and daily interest for realistic loan amounts
+    ok 1 - calculates simple monthly and daily interest for realistic loan amounts
+      ---
+      duration_ms: 3.1884
+      ...
+    # Subtest: allocates a partial interest payment and leaves the correct pending balance
+    ok 2 - allocates a partial interest payment and leaves the correct pending balance
+      ---
+      duration_ms: 1.4811
+      ...
+    # Subtest: tracks multiple partial payments against the same due
+    ok 3 - tracks multiple partial payments against the same due
+      ---
+      duration_ms: 0.4555
+      ...
+    # Subtest: derives compound effective principal only from unpaid capitalized interest
+    ok 4 - derives compound effective principal only from unpaid capitalized interest
+      ---
+      duration_ms: 0.2475
+      ...
+    # Subtest: reduces effective principal when a capitalized due is partially paid
+    ok 5 - reduces effective principal when a capitalized due is partially paid
+      ---
+      duration_ms: 0.1021
+      ...
+    # Subtest: compounds multiple unpaid months and excludes fully paid interest
+    ok 6 - compounds multiple unpaid months and excludes fully paid interest
+      ---
+      duration_ms: 0.1031
+      ...
+    # Subtest: combines reduced or topped-up base principal with previously capitalized interest
+    ok 7 - combines reduced or topped-up base principal with previously capitalized interest
+      ---
+      duration_ms: 0.0933
+      ...
+    1..7
+ok 2 - financial calculations
+  ---
+  duration_ms: 6.2458
+  type: 'suite'
+  ...
+# Subtest: due lifecycle collectability
+    # Subtest: does not treat a 15 July due as collectible on 20 June
+    ok 1 - does not treat a 15 July due as collectible on 20 June
+      ---
+      duration_ms: 0.2966
+      ...
+    # Subtest: treats a 15 July due as collectible on 15 July
+    ok 2 - treats a 15 July due as collectible on 15 July
+      ---
+      duration_ms: 0.2624
+      ...
+    # Subtest: treats an unpaid 15 July due as overdue on 16 July
+    ok 3 - treats an unpaid 15 July due as overdue on 16 July
+      ---
+      duration_ms: 0.1475
+      ...
+    # Subtest: excludes future generated dues from outstanding interest
+    ok 4 - excludes future generated dues from outstanding interest
+      ---
+      duration_ms: 0.3343
+      ...
+    1..4
+ok 3 - due lifecycle collectability
+  ---
+  duration_ms: 1.2914
+  type: 'suite'
+  ...
+# Subtest: loan creation and borrower ledger workflows
+    # Subtest: creates a new loan, records disbursement, and generates initial dues
+    ok 1 - creates a new loan, records disbursement, and generates initial dues
+      ---
+      duration_ms: 63.1465
+      ...
+    # Subtest: persists COMPOUND exactly when selected
+    ok 2 - persists COMPOUND exactly when selected
+      ---
+      duration_ms: 28.4109
+      ...
+    # Subtest: submits the selected loan form state instead of a stale default radio value
+    ok 3 - submits the selected loan form state instead of a stale default radio value
+      ---
+      duration_ms: 0.8002
+      ...
+    # Subtest: loads multiple loans for the same borrower without mixing other users' records
+    ok 4 - loads multiple loans for the same borrower without mixing other users' records
+      ---
+      duration_ms: 14.4638
+      ...
+    1..4
+ok 4 - loan creation and borrower ledger workflows
+  ---
+  duration_ms: 107.1796
+  type: 'suite'
+  ...
+# Subtest: principal workflows
+    # Subtest: records principal repayment and regenerates future dues with the reduced principal
+    ok 1 - records principal repayment and regenerates future dues with the reduced principal
+      ---
+      duration_ms: 18.8661
+      ...
+    # Subtest: recalculates future pending dues after principal repayment while preserving paid dues
+    ok 2 - recalculates future pending dues after principal repayment while preserving paid dues
+      ---
+      duration_ms: 24.808
+      ...
+    # Subtest: uses reduced base principal plus capitalized interest for future compound dues
+    ok 3 - uses reduced base principal plus capitalized interest for future compound dues
+      ---
+      duration_ms: 33.4142
+      ...
+    # Subtest: recalculates future partial dues after principal repayment while preserving paid amounts
+    ok 4 - recalculates future partial dues after principal repayment while preserving paid amounts
+      ---
+      duration_ms: 22.2951
+      ...
+    # Subtest: records loan top-up and regenerates future dues with the increased principal
+    ok 5 - records loan top-up and regenerates future dues with the increased principal
+      ---
+      duration_ms: 29.3975
+      ...
+    # Subtest: closes a loan after full principal repayment and stops future due generation
+    ok 6 - closes a loan after full principal repayment and stops future due generation
+      ---
+      duration_ms: 23.3993
+      ...
+    # Subtest: keeps a compound loan open while capitalized interest remains unpaid
+    ok 7 - keeps a compound loan open while capitalized interest remains unpaid
+      ---
+      duration_ms: 25.8892
+      ...
+    1..7
+ok 5 - principal workflows
+  ---
+  duration_ms: 178.468
+  type: 'suite'
+  ...
+# Subtest: overdue detection
+    # Subtest: marks pending and partial past dues as overdue and updates days overdue
+    ok 1 - marks pending and partial past dues as overdue and updates days overdue
+      ---
+      duration_ms: 19.9413
+      ...
+    # Subtest: capitalizes only unpaid overdue compound interest and preserves historical amounts
+    ok 2 - capitalizes only unpaid overdue compound interest and preserves historical amounts
+      ---
+      duration_ms: 20.3615
+      ...
+    1..2
+ok 6 - overdue detection
+  ---
+  duration_ms: 40.5151
+  type: 'suite'
+  ...
+# Subtest: dashboard statistics
+    # Subtest: counts interest cash received by payment date, including payments against future dues
+    not ok 1 - counts interest cash received by payment date, including payments against future dues
+      ---
+      duration_ms: 61.1112
+      location: 'D:\\Projects\\GuruFinance\\tests\\financial.test.ts:1321:24'
+      failureType: 'testCodeFailure'
+      error: 'prisma_1.prisma.interestDue.aggregate is not a function'
+      code: 'ERR_TEST_FAILURE'
+      name: 'TypeError'
+      stack: |-
+        getDashboardStatsAction (D:\Projects\GuruFinance\src\app\actions\payments.ts:386:24)
+        async TestContext.<anonymous> (D:\Projects\GuruFinance\tests\financial.test.ts:1613:19)
+        async Test.run (node:internal/test_runner/test:980:9)
+        async Promise.all (index 0)
+        async Suite.run (node:internal/test_runner/test:1358:7)
+        async Test.processPendingSubtests (node:internal/test_runner/test:677:7)
+      ...
+    # Subtest: uses collectible dues only for dashboard pending and overdue totals
+    not ok 2 - uses collectible dues only for dashboard pending and overdue totals
+      ---
+      duration_ms: 52.2181
+      location: 'D:\\Projects\\GuruFinance\\tests\\financial.test.ts:1384:24'
+      failureType: 'testCodeFailure'
+      error: 'prisma_1.prisma.interestDue.aggregate is not a function'
+      code: 'ERR_TEST_FAILURE'
+      name: 'TypeError'
+      stack: |-
+        getDashboardStatsAction (D:\Projects\GuruFinance\src\app\actions\payments.ts:386:24)
+        async TestContext.<anonymous> (D:\Projects\GuruFinance\tests\financial.test.ts:1657:19)
+        async Test.run (node:internal/test_runner/test:980:9)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:677:7)
+      ...
+    # Subtest: loads optimized dashboard data from shared due and payment queries without changing output shape
+    ok 3 - loads optimized dashboard data from shared due and payment queries without changing output shape
+      ---
+      duration_ms: 39.9406
+      ...
+    1..3
+not ok 7 - dashboard statistics
+  ---
+  duration_ms: 153.5513
+  type: 'suite'
+  location: 'D:\\Projects\\GuruFinance\\tests\\financial.test.ts:1320:26'
+  failureType: 'subtestsFailed'
+  error: '2 subtests failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: ownership isolation hardening
+    # Subtest: scopes settings upsert by authenticated user
+    ok 1 - scopes settings upsert by authenticated user
+      ---
+      duration_ms: 5.7057
+      ...
+    # Subtest: rejects principal repayment when loan does not belong to authenticated user
+    ok 2 - rejects principal repayment when loan does not belong to authenticated user
+      ---
+      duration_ms: 50.6748
+      ...
+    # Subtest: rejects loan top-up when loan does not belong to authenticated user
+    ok 3 - rejects loan top-up when loan does not belong to authenticated user
+      ---
+      duration_ms: 39.9661
+      ...
+    # Subtest: rejects due regeneration for a loan outside user ownership
+    ok 4 - rejects due regeneration for a loan outside user ownership
+      ---
+      duration_ms: 32.1979
+      ...
+    # Subtest: rejects stop due generation for a loan outside user ownership
+    ok 5 - rejects stop due generation for a loan outside user ownership
+      ---
+      duration_ms: 39.0144
+      ...
+    1..5
+ok 8 - ownership isolation hardening
+  ---
+  duration_ms: 168.0149
+  type: 'suite'
+  ...
+# Subtest: screen data source filters
+    # Subtest: loads today's collections from dues due today and still excludes paid dues
+    ok 1 - loads today's collections from dues due today and still excludes paid dues
+      ---
+      duration_ms: 118.0652
+      ...
+    # Subtest: keeps overdue dues actionable in overdue collections
+    ok 2 - keeps overdue dues actionable in overdue collections
+      ---
+      duration_ms: 98.1166
+      ...
+    # Subtest: clamps current-month reports to today so future dues do not inflate pending totals
+    ok 3 - clamps current-month reports to today so future dues do not inflate pending totals
+      ---
+      duration_ms: 75.987
+      ...
+    # Subtest: loads borrower list summaries from current and overdue dues only
+    ok 4 - loads borrower list summaries from current and overdue dues only
+      ---
+      duration_ms: 26.6588
+      ...
+    1..4
+ok 9 - screen data source filters
+  ---
+  duration_ms: 319.2849
+  type: 'suite'
+  ...
+# Subtest: interest payment recording
+    # Subtest: records an interest payment with allocation against the oldest overdue due
+    ok 1 - records an interest payment with allocation against the oldest overdue due
+      ---
+      duration_ms: 44.8188
+      ...
+    # Subtest: marks a due today as paid after full payment
+    ok 2 - marks a due today as paid after full payment
+      ---
+      duration_ms: 35.5766
+      ...
+    # Subtest: allocates a card-launched full payment to the selected due before older unpaid dues
+    ok 3 - allocates a card-launched full payment to the selected due before older unpaid dues
+      ---
+      duration_ms: 49.7744
+      ...
+    # Subtest: allocates a card-launched partial payment to the selected due and leaves it partial
+    ok 4 - allocates a card-launched partial payment to the selected due and leaves it partial
+      ---
+      duration_ms: 43.5797
+      ...
+    # Subtest: allocates selected due first, then sends overpayment through oldest-first rules
+    ok 5 - allocates selected due first, then sends overpayment through oldest-first rules
+      ---
+      duration_ms: 50.3061
+      ...
+    # Subtest: keeps an overdue due collectible and marks it partial after partial payment
+    ok 6 - keeps an overdue due collectible and marks it partial after partial payment
+      ---
+      duration_ms: 53.0432
+      ...
+    # Subtest: regenerates future compound dues after paying capitalized interest
+    ok 7 - regenerates future compound dues after paying capitalized interest
+      ---
+      duration_ms: 32.9406
+      ...
+    # Subtest: does not allocate payments to future dues before they become collectible
+    ok 8 - does not allocate payments to future dues before they become collectible
+      ---
+      duration_ms: 45.9826
+      ...
+    # Subtest: returns a payment receipt WhatsApp link after recording payment
+    ok 9 - returns a payment receipt WhatsApp link after recording payment
+      ---
+      duration_ms: 80.073
+      ...
+    1..9
+ok 10 - interest payment recording
+  ---
+  duration_ms: 437.1773
+  type: 'suite'
+  ...
+# Subtest: registration and user onboarding
+    # Subtest: rejects registration with invalid parameters
+    ok 1 - rejects registration with invalid parameters
+      ---
+      duration_ms: 136.7397
+      ...
+    # Subtest: rejects registration if email already exists
+    ok 2 - rejects registration if email already exists
+      ---
+      duration_ms: 53.6517
+      ...
+    # Subtest: successfully registers new user, hashes password, and creates session
+    ok 3 - successfully registers new user, hashes password, and creates session
+      ---
+      duration_ms: 50.4729
+      ...
+    # Subtest: handles login, wrong password, unknown email, and logout
+    ok 4 - handles login, wrong password, unknown email, and logout
+      ---
+      duration_ms: 59.8975
+      ...
+    # Subtest: existing user onboarding (setupAccountEmailAction) validates credentials, email uniqueness, updates email without changing User ID or financial relations, and logs audit event
+    ok 5 - existing user onboarding (setupAccountEmailAction) validates credentials, email uniqueness, updates email without changing User ID or financial relations, and logs audit event
+      ---
+      duration_ms: 68.1313
+      ...
+    # Subtest: enforces secure reset tokens, token hashing, rate limiting, and tokenVersion session invalidation
+    ok 6 - enforces secure reset tokens, token hashing, rate limiting, and tokenVersion session invalidation
+      ---
+      duration_ms: 3.9719
+      ...
+    # Subtest: configures required security headers in next.config.js
+    ok 7 - configures required security headers in next.config.js
+      ---
+      duration_ms: 22.5845
+      ...
+    # Subtest: handles SMS/Email provider configuration, success, non-2xx, and network errors safely
+    ok 8 - handles SMS/Email provider configuration, success, non-2xx, and network errors safely
+      ---
+      duration_ms: 25.1601
+      ...
+    # Subtest: handles email provider configuration, success, non-2xx, and network errors safely
+    ok 9 - handles email provider configuration, success, non-2xx, and network errors safely
+      ---
+      duration_ms: 37.6039
+      ...
+    1..9
+ok 11 - registration and user onboarding
+  ---
+  duration_ms: 461.1632
+  type: 'suite'
+  ...
+# Subtest: account management & data lifecycle (Phase 7)
+    # Subtest: updateAccountAction validates mobile uniqueness and normalizes input
+    ok 1 - updateAccountAction validates mobile uniqueness and normalizes input
+      ---
+      duration_ms: 114.4211
+      ...
+    # Subtest: exportUserDataAction sanitizes fields against formula injection and scopes to authenticated user
+    ok 2 - exportUserDataAction sanitizes fields against formula injection and scopes to authenticated user
+      ---
+      duration_ms: 58.8788
+      ...
+    # Subtest: verifies inactive account isActive = false blocks session access
+    ok 3 - verifies inactive account isActive = false blocks session access
+      ---
+      duration_ms: 0.3974
+      ...
+    1..3
+ok 12 - account management & data lifecycle (Phase 7)
+  ---
+  duration_ms: 174.1461
+  type: 'suite'
+  ...
+# Subtest: financial QA & end-to-end money flow audit (Phase 8)
+    # Subtest: Step 2 & 3: Simple interest independent verification & multi-month non-compounding
+    ok 1 - Step 2 & 3: Simple interest independent verification & multi-month non-compounding
+      ---
+      duration_ms: 0.411
+      ...
+    # Subtest: Step 4: Compound interest multi-month progression verification
+    ok 2 - Step 4: Compound interest multi-month progression verification
+      ---
+      duration_ms: 0.2664
+      ...
+    # Subtest: Step 5 & 7: Compound partial payment scenario
+    ok 3 - Step 5 & 7: Compound partial payment scenario
+      ---
+      duration_ms: 0.1814
+      ...
+    # Subtest: Step 6: Full payment before capitalization
+    ok 4 - Step 6: Full payment before capitalization
+      ---
+      duration_ms: 0.131
+      ...
+    # Subtest: Step 8: Overpayment handling
+    ok 5 - Step 8: Overpayment handling
+      ---
+      duration_ms: 0.5079
+      ...
+    # Subtest: Step 10: Principal repayment impact
+    ok 6 - Step 10: Principal repayment impact
+      ---
+      duration_ms: 0.2989
+      ...
+    # Subtest: Step 11: Loan top-up impact
+    ok 7 - Step 11: Loan top-up impact
+      ---
+      duration_ms: 0.1652
+      ...
+    # Subtest: Step 12: Compound capitalization double-count protection & idempotency
+    ok 8 - Step 12: Compound capitalization double-count protection & idempotency
+      ---
+      duration_ms: 0.2144
+      ...
+    # Subtest: Step 14: Payment after capitalization reduces capitalized interest
+    ok 9 - Step 14: Payment after capitalization reduces capitalized interest
+      ---
+      duration_ms: 0.1693
+      ...
+    # Subtest: Step 16: Financial rounding audit for repeating decimals
+    ok 10 - Step 16: Financial rounding audit for repeating decimals
+      ---
+      duration_ms: 0.3465
+      ...
+    # Subtest: Step 17: Date and month boundary calculations
+    ok 11 - Step 17: Date and month boundary calculations
+      ---
+      duration_ms: 0.5142
+      ...
+    # Subtest: Step 19: Complete end-to-end multi-step money flow verification
+    ok 12 - Step 19: Complete end-to-end multi-step money flow verification
+      ---
+      duration_ms: 0.4365
+      ...
+    1..12
+ok 13 - financial QA & end-to-end money flow audit (Phase 8)
+  ---
+  duration_ms: 4.4347
+  type: 'suite'
+  ...
+# Subtest: WhatsApp template persistence and cache revalidation
+    # Subtest: persists templates through prisma.settings.upsert and revalidates all dependent routes
+    ok 1 - persists templates through prisma.settings.upsert and revalidates all dependent routes
+      ---
+      duration_ms: 14.3267
+      ...
+    # Subtest: retrieves newly saved DUE_REMINDER template in buildDueReminderLink
+    ok 2 - retrieves newly saved DUE_REMINDER template in buildDueReminderLink
+      ---
+      duration_ms: 56.617
+      ...
+    # Subtest: retrieves newly saved PAYMENT_RECEIPT template in buildPaymentReceiptLink
+    ok 3 - retrieves newly saved PAYMENT_RECEIPT template in buildPaymentReceiptLink
+      ---
+      duration_ms: 32.3696
+      ...
+    # Subtest: retrieves newly saved BALANCE_REMINDER template in buildBalanceReminderLink
+    ok 4 - retrieves newly saved BALANCE_REMINDER template in buildBalanceReminderLink
+      ---
+      duration_ms: 28.5327
+      ...
+    # Subtest: retrieves newly saved ACCOUNT_STATEMENT template in buildAccountStatementLink
+    ok 5 - retrieves newly saved ACCOUNT_STATEMENT template in buildAccountStatementLink
+      ---
+      duration_ms: 24.9457
+      ...
+    # Subtest: enforces user isolation for settings reading and writing
+    ok 6 - enforces user isolation for settings reading and writing
+      ---
+      duration_ms: 38.8759
+      ...
+    1..6
+ok 14 - WhatsApp template persistence and cache revalidation
+  ---
+  duration_ms: 197.3308
+  type: 'suite'
+  ...
+1..14
+# tests 83
+# suites 14
+# pass 81
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5013.2097

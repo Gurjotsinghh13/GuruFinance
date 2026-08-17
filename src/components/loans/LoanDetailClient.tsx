@@ -84,7 +84,7 @@ export function LoanDetailClient({ loan, summary, balanceWhatsappLink }: Props) 
     <div className="max-w-2xl mx-auto space-y-4">
       {/* Back nav */}
       <div className="flex items-center gap-2">
-        <Link href={`/borrowers/${loan.borrowerId}`} className="btn-ghost p-2">
+        <Link href={`/borrowers/${loan.borrowerId}`} className="btn-ghost p-2" aria-label="Back to borrower">
           <ArrowLeft className="w-4 h-4" />
         </Link>
         <div className="flex-1 min-w-0">
@@ -94,7 +94,7 @@ export function LoanDetailClient({ loan, summary, balanceWhatsappLink }: Props) 
 
         {/* Actions menu */}
         <div className="relative">
-          <button onClick={() => setShowMenu((s) => !s)} className="btn-ghost p-2">
+          <button onClick={() => setShowMenu((s) => !s)} className="btn-ghost p-2" aria-label="Open menu">
             <MoreVertical className="w-4 h-4" />
           </button>
           {showMenu && (
@@ -498,7 +498,7 @@ function TopUpModal({
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl">
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <h3 className="font-semibold text-gray-900">Loan Top-Up</h3>
-          <button onClick={onClose} className="btn-ghost p-1.5"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="btn-ghost p-1.5" aria-label="Close modal"><X className="w-4 h-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <p className="text-sm text-gray-500">Current Principal: <strong>{formatCurrency(currentPrincipal)}</strong></p>
@@ -558,7 +558,7 @@ function PrincipalRepayModal({
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl">
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <h3 className="font-semibold text-gray-900">Principal Repayment</h3>
-          <button onClick={onClose} className="btn-ghost p-1.5"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="btn-ghost p-1.5" aria-label="Close modal"><X className="w-4 h-4" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <p className="text-sm text-gray-500">

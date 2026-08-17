@@ -37,7 +37,7 @@ export function StatementClient({ borrower, loansWithSummary, whatsappLink }: Pr
     <div className="max-w-2xl mx-auto space-y-5">
       {/* Actions bar - hidden in print */}
       <div className="flex items-center gap-3 print:hidden">
-        <Link href={`/borrowers/${borrower.id}`} className="btn-ghost p-2">
+        <Link href={`/borrowers/${borrower.id}`} className="btn-ghost p-2" aria-label="Back to borrower">
           <ArrowLeft className="w-4 h-4" />
         </Link>
         <h1 className="text-xl font-semibold text-gray-900 flex-1">Account Statement</h1>
@@ -162,37 +162,39 @@ export function StatementClient({ borrower, loansWithSummary, whatsappLink }: Pr
             </div>
 
             {/* Interest dues table */}
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left py-2 px-2 font-medium text-gray-500">Due Date</th>
-                  <th className="text-right py-2 px-2 font-medium text-gray-500">Amount</th>
-                  <th className="text-right py-2 px-2 font-medium text-gray-500">Paid</th>
-                  <th className="text-right py-2 px-2 font-medium text-gray-500">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loan.interestDues.map((due) => (
-                  <tr key={due.id} className="border-t border-gray-100">
-                    <td className="py-2 px-2 text-gray-700">{formatDate(due.dueDate)}</td>
-                    <td className="py-2 px-2 text-right tabular-nums">{formatCurrency(Number(due.dueAmount))}</td>
-                    <td className="py-2 px-2 text-right tabular-nums text-emerald-700">
-                      {Number(due.paidAmount) > 0 ? formatCurrency(Number(due.paidAmount)) : "—"}
-                    </td>
-                    <td className="py-2 px-2 text-right">
-                      <span className={
-                        due.status === DueStatus.PAID ? "text-emerald-600 font-medium" :
-                        due.status === DueStatus.OVERDUE ? "text-red-600 font-medium" :
-                        due.status === DueStatus.PARTIAL ? "text-amber-600 font-medium" :
-                        "text-gray-400"
-                      }>
-                        {due.status}
-                      </span>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="text-left py-2 px-2 font-medium text-gray-500">Due Date</th>
+                    <th className="text-right py-2 px-2 font-medium text-gray-500">Amount</th>
+                    <th className="text-right py-2 px-2 font-medium text-gray-500">Paid</th>
+                    <th className="text-right py-2 px-2 font-medium text-gray-500">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {loan.interestDues.map((due) => (
+                    <tr key={due.id} className="border-t border-gray-100">
+                      <td className="py-2 px-2 text-gray-700">{formatDate(due.dueDate)}</td>
+                      <td className="py-2 px-2 text-right tabular-nums">{formatCurrency(Number(due.dueAmount))}</td>
+                      <td className="py-2 px-2 text-right tabular-nums text-emerald-700">
+                        {Number(due.paidAmount) > 0 ? formatCurrency(Number(due.paidAmount)) : "—"}
+                      </td>
+                      <td className="py-2 px-2 text-right">
+                        <span className={
+                          due.status === DueStatus.PAID ? "text-emerald-600 font-medium" :
+                          due.status === DueStatus.OVERDUE ? "text-red-600 font-medium" :
+                          due.status === DueStatus.PARTIAL ? "text-amber-600 font-medium" :
+                          "text-gray-400"
+                        }>
+                          {due.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         ))}
 

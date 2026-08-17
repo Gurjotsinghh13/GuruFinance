@@ -38,10 +38,10 @@ export function BorrowerHeader({ borrower, whatsappLink }: Props) {
 
   return (
     <div className="space-y-3">
-      {/* Back nav */}
-      <div className="flex items-center gap-2">
-        <Link href="/borrowers" className="btn-ghost p-2">
-          <ArrowLeft className="w-4 h-4" />
+      {/* Mobile Header (Back + Menu) */}
+      <div className="md:hidden flex items-center justify-between mb-4">
+        <Link href="/borrowers" className="btn-ghost p-2" aria-label="Back to borrowers">
+          <ArrowLeft className="w-5 h-5" />
         </Link>
         <span className="text-sm text-gray-500">Borrowers</span>
       </div>
@@ -91,6 +91,7 @@ export function BorrowerHeader({ borrower, whatsappLink }: Props) {
             <button
               onClick={() => setShowMenu((s) => !s)}
               className="btn-ghost p-2"
+              aria-label="Open menu"
             >
               <MoreVertical className="w-4 h-4" />
             </button>

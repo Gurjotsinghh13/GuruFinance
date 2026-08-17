@@ -38,8 +38,8 @@ export function EditBorrowerForm({ borrower }: { borrower: Borrower }) {
 
   return (
     <div className="max-w-lg mx-auto space-y-5">
-      <div className="flex items-center gap-3">
-        <Link href={`/borrowers/${borrower.id}`} className="btn-ghost p-2">
+      <div className="flex items-center gap-2 mb-6">
+        <Link href={`/borrowers/${borrower.id}`} className="btn-ghost p-2" aria-label="Back to borrower">
           <ArrowLeft className="w-4 h-4" />
         </Link>
         <h1 className="text-xl font-semibold text-gray-900">Edit Borrower</h1>

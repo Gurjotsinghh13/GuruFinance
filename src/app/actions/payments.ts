@@ -383,35 +383,36 @@ export async function getDashboardStatsAction(): Promise<DashboardStats> {
         loans: { some: { status: LoanStatus.ACTIVE } },
       },
     }),
-    prisma.interestDue.findMany({
+    prisma.interestDue.aggregate({
       where: {
         dueDate: { gte: monthStart, lte: todayStart },
         loan: { status: LoanStatus.ACTIVE, borrower: { userId: session.id } },
       },
-      select: { dueAmount: true, paidAmount: true, waivedAmount: true, status: true },
+      _sum: { dueAmount: true },
     }),
-    prisma.payment.findMany({
+    prisma.payment.aggregate({
       where: {
         paymentDate: { gte: monthStart, lte: monthEnd },
         loan: { borrower: { userId: session.id } },
       },
-      select: { amount: true },
+      _sum: { amount: true },
     }),
-    prisma.interestDue.findMany({
+    prisma.interestDue.aggregate({
       where: {
         status: { in: [DueStatus.PENDING, DueStatus.PARTIAL] },
         dueDate: { lte: todayStart },
         loan: { status: LoanStatus.ACTIVE, borrower: { userId: session.id } },
       },
-      select: { dueAmount: true, paidAmount: true, waivedAmount: true },
+      _sum: { dueAmount: true, paidAmount: true, waivedAmount: true },
     }),
-    prisma.interestDue.findMany({
+    prisma.interestDue.aggregate({
       where: {
         status: { in: [DueStatus.PENDING, DueStatus.PARTIAL, DueStatus.OVERDUE] },
         dueDate: { lt: todayStart },
         loan: { status: LoanStatus.ACTIVE, borrower: { userId: session.id } },
       },
-      select: { dueAmount: true, paidAmount: true, waivedAmount: true },
+      _sum: { dueAmount: true, paidAmount: true, waivedAmount: true },
+      _count: { id: true },
     }),
   ]);
 
@@ -431,25 +432,19 @@ export async function getDashboardStatsAction(): Promise<DashboardStats> {
     0
   );
 
-  const monthlyExpectedInterest = monthDues.reduce(
-    (sum, d) => sum + Number(d.dueAmount),
-    0
-  );
+  const monthlyExpectedInterest = Number(monthDues._sum.dueAmount || 0);
 
-  const interestReceivedThisMonth = monthPayments.reduce(
-    (sum, p) => sum + Number(p.amount),
-    0
-  );
+  const interestReceivedThisMonth = Number(monthPayments._sum.amount || 0);
 
-  const pendingInterest = pendingDues.reduce(
-    (sum, d) => sum + Number(d.dueAmount) - Number(d.paidAmount) - Number(d.waivedAmount),
-    0
-  );
+  const pendingInterest =
+    Number(pendingDues._sum.dueAmount || 0) -
+    Number(pendingDues._sum.paidAmount || 0) -
+    Number(pendingDues._sum.waivedAmount || 0);
 
-  const overdueInterest = overdueDues.reduce(
-    (sum, d) => sum + Number(d.dueAmount) - Number(d.paidAmount) - Number(d.waivedAmount),
-    0
-  );
+  const overdueInterest =
+    Number(overdueDues._sum.dueAmount || 0) -
+    Number(overdueDues._sum.paidAmount || 0) -
+    Number(overdueDues._sum.waivedAmount || 0);
 
   return {
     totalPrincipalLent,
@@ -461,7 +456,7 @@ export async function getDashboardStatsAction(): Promise<DashboardStats> {
     interestReceivedThisMonth,
     pendingInterest,
     overdueInterest,
-    overdueCount: overdueDues.length,
+    overdueCount: overdueDues._count.id,
   };
 }
 
@@ -476,55 +471,15 @@ export async function getDashboardDataAction(): Promise<DashboardData> {
   const now = new Date();
   const todayStart = startOfDay(now);
   const todayEnd = endOfDay(now);
-  const monthStart = startOfMonth(now);
-  const monthEnd = endOfMonth(now);
 
   const [
-    activeLoans,
-    closedLoanCount,
-    activeBorrowerCount,
-    monthDues,
+    stats,
     actionableDues,
-    relevantPayments,
+    collectedTodayPayments,
+    dueTemplate,
+    balanceTemplate,
   ] = await Promise.all([
-    prisma.loan.findMany({
-      where: {
-        status: LoanStatus.ACTIVE,
-        borrower: { userId: session.id },
-      },
-      select: {
-        currentPrincipal: true,
-        interestRate: true,
-        interestType: true,
-        loanFrequency: true,
-        interestDues: {
-          where: { wasCompounded: true },
-          select: {
-            dueAmount: true,
-            paidAmount: true,
-            waivedAmount: true,
-            wasCompounded: true,
-          },
-        },
-      },
-    }),
-    prisma.loan.count({
-      where: { status: LoanStatus.CLOSED, borrower: { userId: session.id } },
-    }),
-    prisma.borrower.count({
-      where: {
-        userId: session.id,
-        isArchived: false,
-        loans: { some: { status: LoanStatus.ACTIVE } },
-      },
-    }),
-    prisma.interestDue.findMany({
-      where: {
-        dueDate: { gte: monthStart, lte: todayStart },
-        loan: { status: LoanStatus.ACTIVE, borrower: { userId: session.id } },
-      },
-      select: { dueAmount: true, paidAmount: true, waivedAmount: true, status: true },
-    }),
+    getDashboardStatsAction(),
     prisma.interestDue.findMany({
       where: {
         status: { in: [DueStatus.PENDING, DueStatus.PARTIAL, DueStatus.OVERDUE] },
@@ -542,10 +497,7 @@ export async function getDashboardDataAction(): Promise<DashboardData> {
     }),
     prisma.payment.findMany({
       where: {
-        OR: [
-          { paymentDate: { gte: monthStart, lte: monthEnd } },
-          { createdAt: { gte: todayStart, lte: todayEnd } },
-        ],
+        createdAt: { gte: todayStart, lte: todayEnd },
         loan: { borrower: { userId: session.id } },
       },
       include: {
@@ -557,87 +509,35 @@ export async function getDashboardDataAction(): Promise<DashboardData> {
         },
       },
       orderBy: { createdAt: "desc" },
+      take: 10,
     }),
+    getTemplate(MessageType.DUE_REMINDER, session.id),
+    getTemplate(MessageType.BALANCE_REMINDER, session.id),
   ]);
 
-  const totalPrincipalLent = activeLoans.reduce(
-    (sum, l) =>
-      sum +
-      calculateEffectivePrincipal(
-        Number(l.currentPrincipal),
-        l.interestType,
-        (l.interestDues || []).map((due) => ({
-          dueAmount: Number(due.dueAmount),
-          paidAmount: Number(due.paidAmount),
-          waivedAmount: Number(due.waivedAmount),
-          wasCompounded: due.wasCompounded,
-        }))
-      ),
-    0
-  );
-  const monthlyExpectedInterest = monthDues.reduce(
-    (sum, d) => sum + Number(d.dueAmount),
-    0
-  );
-  const interestReceivedThisMonth = relevantPayments
-    .filter((payment) => payment.paymentDate >= monthStart && payment.paymentDate <= monthEnd)
-    .reduce((sum, p) => sum + Number(p.amount), 0);
-
-  const pendingDues = actionableDues.filter((due) =>
-    (due.status === DueStatus.PENDING || due.status === DueStatus.PARTIAL) &&
-    due.dueDate <= todayStart
-  );
   const overdueDues = actionableDues.filter((due) =>
     (due.status === DueStatus.PENDING ||
       due.status === DueStatus.PARTIAL ||
       due.status === DueStatus.OVERDUE) &&
     due.dueDate < todayStart
   );
+
   const todayDues = actionableDues.filter((due) =>
     (due.status === DueStatus.PENDING || due.status === DueStatus.PARTIAL) &&
     due.dueDate >= todayStart &&
     due.dueDate <= todayEnd &&
     !due.loan.borrower.isArchived
   );
+
   const visibleOverdueDues = overdueDues.filter((due) => !due.loan.borrower.isArchived);
-  const collectedTodayPayments = relevantPayments
-    .filter((payment) =>
-      payment.createdAt >= todayStart &&
-      payment.createdAt <= todayEnd &&
-      !payment.loan.borrower.isArchived
-    )
-    .slice(0, 10);
 
-  const [dueTemplate, balanceTemplate] = await Promise.all([
-    getTemplate(MessageType.DUE_REMINDER, session.id),
-    getTemplate(MessageType.BALANCE_REMINDER, session.id),
-  ]);
-
-  const pendingInterest = pendingDues.reduce(
-    (sum, d) => sum + dueRemainingAmount(d),
-    0
-  );
-  const overdueInterest = overdueDues.reduce(
-    (sum, d) => sum + dueRemainingAmount(d),
-    0
-  );
+  const validCollectedTodayPayments = collectedTodayPayments.filter((p) => !p.loan.borrower.isArchived);
 
   return {
-    stats: {
-      totalPrincipalLent,
-      activePrincipal: totalPrincipalLent,
-      activeLoanCount: activeLoans.length,
-      closedLoanCount,
-      activeBorrowerCount,
-      monthlyExpectedInterest,
-      interestReceivedThisMonth,
-      pendingInterest,
-      overdueInterest,
-      overdueCount: overdueDues.length,
-    },
+    stats,
     todayCollections: await mapTodayCollections(todayDues, session.id, dueTemplate),
     overdueAccounts: await mapOverdueAccounts(visibleOverdueDues, session.id, balanceTemplate),
-    collectedToday: mapCollectedTodayPayments(collectedTodayPayments),
+    collectedToday: mapCollectedTodayPayments(validCollectedTodayPayments),
   };
 }
 

@@ -1568,43 +1568,23 @@ describe("dashboard statistics", () => {
         count: async () => 1,
       },
       interestDue: {
-        findMany: async (args: any) => {
-          if (args.where.dueDate) {
-            return [
-              {
-                dueAmount: 3000,
-                paidAmount: currentDuePaidAmount,
-                waivedAmount: 0,
-                status: DueStatus.PARTIAL,
-              },
-            ];
+        aggregate: async (args: any) => {
+          if (args.where.dueDate?.gte) {
+            return { _sum: { dueAmount: 3000 } };
           }
-
-          if (args.where.status === DueStatus.OVERDUE) {
-            return [];
+          if (args.where.status?.in?.length === 2) {
+            return { _sum: { dueAmount: 6000, paidAmount: currentDuePaidAmount + futureDuePaidAmount, waivedAmount: 0 } };
           }
-
-          return [
-            {
-              dueAmount: 3000,
-              paidAmount: currentDuePaidAmount,
-              waivedAmount: 0,
-            },
-            {
-              dueAmount: 3000,
-              paidAmount: futureDuePaidAmount,
-              waivedAmount: 0,
-            },
-          ];
+          if (args.where.status?.in?.length === 3) {
+            return { _sum: { dueAmount: 0, paidAmount: 0, waivedAmount: 0 }, _count: { id: 0 } };
+          }
+          return { _sum: {} };
         },
       },
       payment: {
-        findMany: async (args: any) => {
+        aggregate: async (args: any) => {
           paymentQueries.push(args);
-          return [
-            { amount: currentMonthPayment },
-            { amount: currentDuePaidAmount },
-          ];
+          return { _sum: { amount: currentMonthPayment + currentDuePaidAmount } };
         },
       },
     };
@@ -1634,22 +1614,22 @@ describe("dashboard statistics", () => {
         count: async () => 1,
       },
       interestDue: {
-        findMany: async (args: any) => {
+        aggregate: async (args: any) => {
           dueQueries.push(args);
 
           if (!args.where.status) {
-            return [{ dueAmount: 3000, paidAmount: 1000, waivedAmount: 0, status: DueStatus.PARTIAL }];
+            return { _sum: { dueAmount: 3000, paidAmount: 1000, waivedAmount: 0 } };
           }
 
           if (args.where.dueDate?.lte || args.where.dueDate?.lt) {
-            return [{ dueAmount: 3000, paidAmount: 1000, waivedAmount: 0 }];
+            return { _sum: { dueAmount: 3000, paidAmount: 1000, waivedAmount: 0 }, _count: { id: 1 } };
           }
 
-          return [];
+          return { _sum: { dueAmount: 0, paidAmount: 0, waivedAmount: 0 }, _count: { id: 0 } };
         },
       },
       payment: {
-        findMany: async () => [],
+        aggregate: async () => ({ _sum: { amount: 0 } }),
       },
     };
 
@@ -1761,6 +1741,20 @@ describe("dashboard statistics", () => {
         },
       },
       interestDue: {
+        aggregate: async (args: any) => {
+          if (!args.where.status) {
+            return { _sum: { dueAmount: 6000, paidAmount: 0, waivedAmount: 0 } };
+          }
+          // lte is for pending
+          if (args.where.dueDate?.lte) {
+            return { _sum: { dueAmount: 3000, paidAmount: 1000, waivedAmount: 0 }, _count: { id: 1 } };
+          }
+          // lt is for overdue
+          if (args.where.dueDate?.lt) {
+            return { _sum: { dueAmount: 5000, paidAmount: 0, waivedAmount: 0 }, _count: { id: 2 } };
+          }
+          return { _sum: { dueAmount: 0, paidAmount: 0, waivedAmount: 0 }, _count: { id: 0 } };
+        },
         findMany: async (args: any) => {
           queryCounts.dueFindMany += 1;
           if (args.where.status) {
@@ -1773,6 +1767,7 @@ describe("dashboard statistics", () => {
         },
       },
       payment: {
+        aggregate: async () => ({ _sum: { amount: 1500 } }),
         findMany: async () => {
           queryCounts.paymentFindMany += 1;
           return [
@@ -1814,7 +1809,7 @@ describe("dashboard statistics", () => {
       loanFindMany: 1,
       loanCount: 1,
       borrowerCount: 1,
-      dueFindMany: 2,
+      dueFindMany: 1,
       paymentFindMany: 1,
       settingsFindUnique: 2,
     });
