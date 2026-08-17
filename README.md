@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Prisma-5.22-2D3748?style=for-the-badge&logo=prisma" alt="Prisma ORM" />
   <img src="https://img.shields.io/badge/PostgreSQL-Neon-4169E1?style=for-the-badge&logo=postgresql" alt="PostgreSQL" />
   <img src="https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?style=for-the-badge&logo=tailwind-css" alt="Tailwind CSS" />
-  <img src="https://img.shields.io/badge/Tests-77%2F77_PASS-22c55e?style=for-the-badge" alt="Test Suite" />
+  <img src="https://img.shields.io/badge/Tests-83%2F83_PASS-22c55e?style=for-the-badge" alt="Test Suite" />
   <img src="https://img.shields.io/badge/Deployed_on-Vercel-000000?style=for-the-badge&logo=vercel" alt="Vercel" />
 </p>
 
@@ -83,7 +83,7 @@ graph TD
 | Database | PostgreSQL | `15+` | Relational storage via Neon Serverless |
 | ORM | Prisma | `5.22.x` | Schema migrations, type-safe queries |
 | Auth | Custom JWT | `jose` + `bcryptjs` | HTTP-only cookie sessions & password hashing |
-| Testing | Node Test Runner | Native Node.js | 77 unit, integration & financial engine tests |
+| Testing | Node Test Runner | Native Node.js | 83 unit, integration & financial engine tests |
 | Deployment | Vercel | — | App hosting, Edge Middleware, Cron Jobs |
 
 ---

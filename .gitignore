@@ -84,3 +84,15 @@ npx
 # Test Outputs
 test-results*.txt
 test_output.txt
+
+# ──────────────────────────────────────────────────────────────
+# Caches & Tooling
+# ──────────────────────────────────────────────────────────────
+.eslintcache
+.stylelintcache
+.prettiercache
+.turbo/
+.npm/
+.yarn/
+*.tgz
+.agents/
