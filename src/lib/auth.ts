@@ -4,6 +4,7 @@
 // No NextAuth dependency — lightweight and fully controlled.
 // ============================================================
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
@@ -69,7 +70,7 @@ export async function getSession(): Promise<SessionUser | null> {
 // Redirects to login if not authenticated or session invalidated.
 // ============================================================
 
-export async function requireAuth(): Promise<SessionUser> {
+export const requireAuth = cache(async (): Promise<SessionUser> => {
   const session = await getSession();
   if (!session) {
     redirect("/login");
@@ -88,7 +89,7 @@ export async function requireAuth(): Promise<SessionUser> {
   }
 
   return session;
-}
+});
 
 // ============================================================
 // CLEAR SESSION

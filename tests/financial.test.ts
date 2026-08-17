@@ -931,7 +931,7 @@ describe("loan creation and borrower ledger workflows", () => {
 
   it("submits the selected loan form state instead of a stale default radio value", () => {
     const source = readFileSync(
-      require.resolve("../src/app/loans/new/page.tsx"),
+      require.resolve("../src/app/(protected)/loans/new/page.tsx"),
       "utf8"
     );
 
